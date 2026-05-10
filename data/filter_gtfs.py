@@ -1,11 +1,7 @@
 import pandas as pd
 import os
 
-# --- Configuration ---------------------------------------------------------
 
-# Bounding box for Tokyo's 23 special wards (with small margin).
-# Stops outside this box are definitely not in the 23 wards.
-# Precise ward-level filtering happens later using the GeoJSON.
 TOKYO_BBOX = {
     "min_lat": 35.50,
     "max_lat": 35.85,
@@ -13,7 +9,6 @@ TOKYO_BBOX = {
     "max_lon": 139.92,
 }
 
-# File names — adjust if your files\path names are named differently.
 STOPS_FILE = "stops.txt"
 STOP_TIMES_FILE = "stop_times.txt"
 TRIPS_FILE = "trips.txt"
@@ -23,7 +18,6 @@ STOPS_OUT = "stops_tokyo.txt"
 STOP_TIMES_OUT = "stop_times_tokyo.txt"
 TRIPS_OUT = "trips_tokyo.txt"
 
-# Chunk size for reading stop_times.txt — adjust if needed.
 CHUNK_SIZE = 500_000
 
 
@@ -45,7 +39,6 @@ def filter_stops():
     tokyo_stops.to_csv(STOPS_OUT, index=False)
     print(f"  Wrote {STOPS_OUT}")
 
-    # Return the set of stop_ids we care about (including parent stations)
     keep_ids = set(tokyo_stops["stop_id"].astype(str))
     if "parent_station" in tokyo_stops.columns:
         parents = tokyo_stops["parent_station"].dropna().astype(str)
@@ -58,7 +51,6 @@ def filter_stop_times(keep_stop_ids):
     print("\nStep 2: Filtering stop_times.txt in chunks...")
     print(f"  (This is the big one — reading in chunks of {CHUNK_SIZE:,} rows)")
 
-    # Remove output file if it exists (we'll append to it).
     if os.path.exists(STOP_TIMES_OUT):
         os.remove(STOP_TIMES_OUT)
 
@@ -110,7 +102,6 @@ def main():
     print("GTFS Tokyo Filter")
     print("=" * 50)
 
-    # Sanity check: make sure the input files exist.
     for f in [STOPS_FILE, STOP_TIMES_FILE, TRIPS_FILE]:
         if not os.path.exists(f):
             print(f"ERROR: {f} not found in current directory.")

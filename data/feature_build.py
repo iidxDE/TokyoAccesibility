@@ -1,6 +1,4 @@
 """
-Build Feature Matrix for Tokyo Station Ridership Prediction
-
 This script processes three external datasets and produces a single,
 clean feature matrix ready for ML modeling.
 
@@ -26,8 +24,6 @@ INPUT FILES (place in same directory):
 OUTPUT:
     - station_features.csv  (one row per station, ready for ML)
 
-Usage:
-    python build_features.py
 """
 
 import pandas as pd
@@ -53,7 +49,6 @@ CENSUS_BOUNDARIES_FILE = "tokyo_chocho_boundaries.shp"
 
 OUTPUT_CSV       = "station_features.csv"
 
-# Yamanote route id (already validated in earlier work)
 YAMANOTE_ROUTE   = "JR-East.Yamanote"
 
 
@@ -180,13 +175,8 @@ def build_connectivity_features(stops, trips, stop_times):
     return feats
 
 
-# ============================================================
-# 4. DISTANCE TO YAMANOTE (PHYSICAL)
-# ============================================================
 
 def distance_to_yamanote(stops, trips, stop_times):
-    """For each station, the haversine distance (km) to the nearest
-    physical Yamanote station — a complementary feature to transfer count."""
     print("[4/6] Computing physical distance to Yamanote...")
 
     yama_trips = set(trips.loc[trips.route_id == YAMANOTE_ROUTE, "trip_id"])
@@ -213,24 +203,13 @@ def distance_to_yamanote(stops, trips, stop_times):
     return station_pts[["station_key", "km_to_yamanote"]]
 
 
-# ============================================================
-# 5. RIDERSHIP TARGET (MLIT)
-# ============================================================
-
 def load_ridership():
-    """Load MLIT ridership data and pull the FY2019 column.
-    The shapefile column 'S12_041' contains 2019 ridership."""
     print("[5/6] Loading MLIT ridership data...")
     if not Path(MLIT_SHP).exists():
         print(f"   WARNING: {MLIT_SHP} not found — skipping ridership target.")
         return None
 
     rs = gpd.read_file(MLIT_SHP, encoding="cp932")
-    # Column meanings (per MLIT spec):
-    # S12_001 = station name (Japanese)
-    # S12_002 = operator
-    # S12_003 = line name
-    # S12_041 = 2019 daily passengers (人/日)
     rs = rs.rename(columns={
         "S12_001": "ridership_station_name",
         "S12_002": "operator",
@@ -243,9 +222,6 @@ def load_ridership():
     rs = rs.dropna(subset=["ridership_2019"])
     rs = rs[rs["ridership_2019"] > 0]
 
-    # Aggregate to station level — same name + same approximate location
-    # The ridership data sometimes lists separate rows per line; we sum across
-    # operators reporting at the same station.
     rs_agg = (rs.groupby("ridership_station_name", as_index=False)
                 .agg(ridership_2019=("ridership_2019", "sum"),
                      n_operators=("operator", "nunique")))
@@ -254,11 +230,9 @@ def load_ridership():
 
 
 def match_ridership_to_stations(stops_with_wards, ridership):
-    """Match GTFS stations to MLIT ridership rows by Japanese name."""
     if ridership is None:
         return None
 
-    # Each GTFS station has a jp_name; aggregate per station_key
     name_lookup = (stops_with_wards.dropna(subset=["station_key", "jp_name"])
                    .groupby("station_key")["jp_name"].first())
 
@@ -267,7 +241,6 @@ def match_ridership_to_stations(stops_with_wards, ridership):
         r"[\s　]+", "", regex=True
     )
 
-    # Build a lookup keyed by cleaned Japanese name
     lookup = (ridership.set_index("jp_name_clean")["ridership_2019"]
               .to_dict())
 
@@ -287,37 +260,26 @@ def match_ridership_to_stations(stops_with_wards, ridership):
     return df
 
 
-# ============================================================
-# 6. POPULATION FEATURES (CENSUS-TRACT)
-# ============================================================
 
 def population_features(stops_with_wards):
-    """Compute population-related features per station:
-    - population in the chocho the station sits in
-    - population within 800m walking radius (sum of overlapping chocho)
-    """
+
     print("[6/6] Computing population features...")
     if not (Path(CENSUS_POP_CSV).exists()
             and Path(CENSUS_BOUNDARIES_FILE).exists()):
         print("   WARNING: Census files not found — skipping population features.")
         return None
 
-    # The e-Stat CSV is Shift-JIS encoded (cp932). It also has a units row
-    # (row of Japanese labels) right after the header that we must skip,
-    # uses "-" to mean "no data", and contains rows at multiple aggregation
-    # levels (HYOSYO column: 1=ward, 3=大字/町, 4=丁目).
+
     pop_df = pd.read_csv(
         CENSUS_POP_CSV,
-        encoding="cp932",      # critical: file is Shift-JIS
+        encoding="cp932",
         dtype=str,
-        skiprows=[1],          # skip the Japanese units/labels row
+        skiprows=[1],
         na_values=["-", "*", "X"],
     )
-    # We want the finest-grained level: 丁目 (HYOSYO == "4"). This avoids
-    # double-counting parent (ward, 大字) rows.
+
     if "HYOSYO" in pop_df.columns:
         pop_df = pop_df[pop_df["HYOSYO"] == "4"].copy()
-    # Population total — column T001081001 in the standard schema
     pop_col = "T001081001" if "T001081001" in pop_df.columns else None
     if pop_col is None:
         for cand in pop_df.columns:
@@ -332,10 +294,8 @@ def population_features(stops_with_wards):
     bounds["KEY_CODE"] = bounds["KEY_CODE"].astype(str)
     bounds = bounds.merge(pop_df, on="KEY_CODE", how="left")
 
-    # Project to metric for buffering (EPSG:6691 = JGD2011 / UTM zone 54N)
     bounds_m = bounds.to_crs(epsg=6691)
 
-    # One row per station with location
     stations = (stops_with_wards.dropna(subset=["station_key"])
                 .groupby("station_key")[["stop_lat", "stop_lon"]].first()
                 .reset_index())
@@ -345,14 +305,12 @@ def population_features(stops_with_wards):
         crs="EPSG:4326",
     ).to_crs(epsg=6691)
 
-    # Containing-chocho population
     contained = gpd.sjoin(pts, bounds_m[["population", "geometry"]],
                           how="left", predicate="within")
     contained = (contained.drop_duplicates(subset="station_key")
                           [["station_key", "population"]]
                           .rename(columns={"population": "pop_chocho"}))
 
-    # 800m catchment population
     pts_800 = pts.copy()
     pts_800["geometry"] = pts_800.buffer(800)
     intersected = gpd.sjoin(pts_800, bounds_m[["population", "geometry"]],
@@ -362,10 +320,6 @@ def population_features(stops_with_wards):
 
     return contained.merge(catch, on="station_key", how="outer")
 
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
     stops, trips, stop_times, routes = load_gtfs()
