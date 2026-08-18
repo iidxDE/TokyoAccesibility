@@ -1,84 +1,58 @@
 # Tokyo Station Ridership Prediction
 
-**CS439 — Intro to Data Science — Final Project**
+Predicting station-level **daily ridership** across Tokyo's rail network (474
+stations, 23 special wards) from transit-network **connectivity**, **geography**,
+and **demographics** — then reframing transit equity as an analysis of
+prediction residuals.
 
-Predicting station-level daily ridership across Tokyo's rail network using transit network connectivity, geographic, and demographic features.
+Two shippable artifacts (planned): a **FastAPI** inference service (the "what-if
+new station" siting tool) and a **Streamlit** map frontend that consumes it over
+HTTP.
 
-## Research Question
+> **Status:** Phase 0 — repository scaffold. The pipeline, models, API, and
+> frontend are built out over Phases 1–7. See
+> [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the phase ordering and
+> [CLAUDE.md](CLAUDE.md) for the architecture rules. A result-first README with
+> the demo link lands in Phase 7.
 
-Can transit network connectivity features, along with geographic and population context, predict station-level daily ridership in Tokyo, and which features matter most?
+## Quickstart
 
-A secondary question examines which areas of Tokyo may be underserved or overserved by the rail network, reframed as an analysis of prediction residuals.
+```bash
+# Install the package + all optional groups into your environment.
+python -m pip install -e ".[dev,serving,app,models,features]"
+# (Windows venv) prefix commands with the interpreter, e.g.:
+#   make test PYTHON=.venv/Scripts/python.exe
+
+# Reproducible pipeline (implemented incrementally across phases)
+make data        # Phase 1: parse GTFS, MLIT ridership, e-Stat census
+make features    # Phase 2: assemble the 474-station feature matrix
+make train       # Phase 4: nested spatial CV, select + serialize the pipeline
+
+# Quality gates (same as CI)
+make lint        # ruff check
+make format      # ruff format
+make typecheck   # mypy src
+make test        # pytest
+```
+
+`make` targets accept `PYTHON=<path>` to pick an interpreter; each also
+corresponds to a DVC stage (`dvc repro` runs the whole pipeline).
+
+## Layout
+
+```
+src/tokyo_ridership/   data | features | models | serving | viz
+config/config.yaml     paths, source filenames, feature lists, serving bounds
+params.yaml            swept hyperparameters + CV/interval protocol (DVC-tracked)
+dvc.yaml, Makefile     reproducible pipeline entrypoints
+data/{raw,interim,processed}/   gitignored payloads, DVC-tracked
+tests/                 unit tests (graph construction + 800 m catchment in Phase 2)
+app/streamlit_app.py   HTTP client of the API (never imports the model)
+docs/                  the source paper (RidershipProject.pdf)
+```
 
 ## Data
 
-Raw data files for ridership and census are not included due to size. The processed feature matrix (`station_features.csv`) is included, so the modeling notebook can be run directly.
-
-To reproduce the full pipeline from scratch:
-
-1. **GTFS schedule data** — generated via the [TokyoGTFS](https://github.com/MKuranowski/TokyoGTFS) project, which aggregates data originally published by [ODPT](https://www.odpt.org/). Instructions for how to generate the data are in its repository. Once extracted, run `filter_gtfs.py` to filter the data to the 23 special wards of Tokyo.
-    The script will produce `stops_tokyo.txt`, `stop_times_tokyo.txt`, and `trips_tokyo.txt`.
-
-2. **MLIT ridership data (FY2019)** — download the S12-20 dataset from [National Land Numerical Information](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-S12-v3_1.html). Select 令和元年, unzip, and place the `S12-20_GML/` directory in the project root.
-
-3. **e-Stat census data (2020)** — download from [e-Stat GIS](https://www.e-stat.go.jp/gis/statmap-search):
-   Population CSV: 国勢調査 → 2020年 → 小地域 → 男女別人口総数及び世帯総数 → 13:東京都
-   Boundary shapefile: same page, download 境界データ for 東京都 小地域
-
-4. Run the feature pipeline:
-   ```
-   python feature_build.py
-   ```
-
-## Features
-
-| Category | Feature | Description |
-|---|---|---|
-| Connectivity | `n_routes` | Number of distinct routes serving the station |
-| Connectivity | `min_transfers_yamanote` | Minimum route-to-route transfers to reach the Yamanote Line |
-| Connectivity | `mean_route_degree_cent` | Mean degree centrality of routes serving the station |
-| Connectivity | `mean_route_btw_cent` | Mean betweenness centrality of routes serving the station |
-| Connectivity | `max_route_btw_cent` | Max betweenness centrality of routes serving the station |
-| Service | `daily_stop_events` | Total scheduled stop events per day (service frequency proxy) |
-| Geography | `km_to_yamanote` | Haversine distance (km) to nearest Yamanote Line station |
-| Geography | `ward_jp` | Ward assignment (one-hot encoded in modeling) |
-| Demographics | `pop_800m_catchment` | Total population within 800 m radius of station |
-
-## Models
-
-All models evaluated under ward-level spatial cross-validation (GroupKFold, k=8) to prevent spatial information leakage.
-
-| Model | R² (log scale) | MAE (log scale) | RMSE (original scale) |
-|---|---|---|---|
-| Mean baseline | −0.088 ± 0.077 | 1.035 | 213,533 |
-| Ridge | 0.527 ± 0.072 | 0.677 | 1,535,286 |
-| **Random Forest** | **0.679 ± 0.076** | **0.558** | **123,809** |
-| Gradient Boosting | 0.671 ± 0.107 | 0.561 | 123,161 |
-
-The Random Forest was selected as the best-performing model (out-of-fold R² = 0.708).
-
-## Dependencies
-
-- Python 3.10+
-- pandas
-- numpy
-- scikit-learn
-- matplotlib
-- shap
-
-Additional dependencies for the feature pipeline (`feature_build.py`):
-- geopandas
-- networkx
-- shapely
-
-Install all dependencies:
-```
-pip install pandas numpy scikit-learn matplotlib shap geopandas networkx shapely
-```
-
-## Acknowledgments
-
-- GTFS data generated by [TokyoGTFS](https://github.com/MKuranowski/TokyoGTFS) from [ODPT](https://www.odpt.org/) open data
-- Ridership statistics from [MLIT National Land Numerical Information](https://nlftp.mlit.go.jp/ksj/)
-- Census data from [e-Stat](https://www.e-stat.go.jp/)
-- Ward boundary GeoJSON from [JapanCityGeoJson](https://github.com/niiyz/JapanCityGeoJson)
+Raw ridership and census sources are large and are **not committed** (they are
+gitignored and DVC-tracked). Acquisition instructions live in
+[OVERVIEW.md](OVERVIEW.md); the prototype pipeline scripts are under `data/`.

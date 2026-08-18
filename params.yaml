@@ -1,0 +1,47 @@
+# Swept hyperparameters + protocol knobs (DVC-tracked; change -> stage reruns).
+
+seed: 42
+target_transform: log1p        # model predicts ln(1 + y)
+
+# Spatial cross-validation: grid blocks primary, ward folds as robustness check.
+# Both the inner tuning loop and outer eval loop use this same block logic.
+spatial_cv:
+  strategy: grid               # grid | ward
+  grid_size_km: 5
+  n_splits: 8
+  shuffle: false
+
+# Model roster (Phase 4). Paper baselines + LightGBM extension.
+models:
+  dummy:
+    strategy: mean
+  ridge:
+    alpha: 1.0
+  random_forest:
+    n_estimators: 300
+    min_samples_leaf: 3
+  gradient_boosting:
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.05
+  lightgbm:
+    n_estimators: 500
+    learning_rate: 0.05
+    num_leaves: 31
+
+# Endogeneity experiment: which feature configurations to run through the harness.
+endogeneity_variants:
+  - full
+  - no_daily_stop_events       # servable variant (greenfield-usable)
+  - stop_events_only
+
+# Prediction intervals.
+intervals:
+  method: conformal            # conformal (MAPIE) | quantile
+  confidence_level: 0.9
+
+# Residual spatial-autocorrelation diagnostics on out-of-fold residuals.
+residuals:
+  moran: true
+  lisa: true
+  n_permutations: 999

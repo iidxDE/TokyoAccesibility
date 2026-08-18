@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Data payloads: keep the directory structure, ignore the contents.
+# (external downloads are DVC-tracked, not committed to git)
+/data/raw/*
+/data/interim/*
+/data/processed/*
+!/data/raw/.gitkeep
+!/data/interim/.gitkeep
+!/data/processed/.gitkeep
+
+# Loose prototype data living in data/ root (superseded by data/{raw,interim,processed}).
+# Tracked code (feature_build.py, filter_gtfs.py) and the small clean matrix stay.
+/data/*.txt
+/data/*.shp
+/data/*.shx
+/data/*.dbf
+/data/*.prj
+/data/*.geojson
+/data/tokyo23.json
+/data/S12-20_GML/
+/data/A002005212020DDSWC13/
+
+# Serialized models: keep the dir, ignore artifacts.
+/models/*
+!/models/.gitkeep
+
+# DVC internals
+/.dvc/cache
+/.dvc/tmp
+
+# Reports: keep figures dir, ignore generated metrics.
+/reports/metrics.json

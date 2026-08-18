@@ -1,0 +1,45 @@
+# Reproducible pipeline. Stages regenerate end-to-end from raw data.
+# Commands mirror the Makefile targets; DVC tracks deps/outs + params.yaml.
+
+stages:
+  data:
+    cmd: >
+      python -m tokyo_ridership.data.load_gtfs &&
+      python -m tokyo_ridership.data.load_ridership &&
+      python -m tokyo_ridership.data.load_census
+    deps:
+      - src/tokyo_ridership/data
+      - data/raw
+    outs:
+      - data/interim
+
+  features:
+    cmd: python -m tokyo_ridership.features.build_features
+    deps:
+      - src/tokyo_ridership/features
+      - data/interim
+    params:
+      - config/config.yaml:
+          - features
+          - catchment_radius_m
+          - yamanote_route_id
+    outs:
+      - data/processed/station_features.csv
+
+  train:
+    cmd: python -m tokyo_ridership.models.train
+    deps:
+      - src/tokyo_ridership/models
+      - data/processed/station_features.csv
+    params:
+      - params.yaml:
+          - seed
+          - spatial_cv
+          - models
+          - endogeneity_variants
+          - intervals
+    outs:
+      - models/pipeline.joblib
+    metrics:
+      - reports/metrics.json:
+          cache: false
