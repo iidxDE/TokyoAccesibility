@@ -1,0 +1,76 @@
+# Central configuration: paths, source filenames, feature lists.
+# Hyperparameters that get swept live in params.yaml (DVC-tracked).
+
+paths:
+  data_raw: data/raw            # external downloads (gitignored, DVC-tracked)
+  data_interim: data/interim    # filtered GTFS + clean intermediate tables
+  data_processed: data/processed
+  models: models
+  reports: reports
+
+# Raw source filenames, resolved under paths.data_raw unless noted.
+# Mirrors the prototype in data/feature_build.py.
+sources:
+  gtfs:
+    stops: stops.txt
+    stop_times: stop_times.txt
+    trips: trips.txt
+    routes: routes.txt
+  gtfs_filtered:              # produced by the bbox filter (Phase 1), in interim/
+    stops: stops_tokyo.txt
+    stop_times: stop_times_tokyo.txt
+    trips: trips_tokyo.txt
+  wards_geojson: tokyo23.json
+  mlit_ridership_shp: S12-20_GML/S12-20_GML/S12-20_NumberOfPassengers.shp
+  census_population: tokyo_chocho_population.txt
+  census_boundaries: tokyo_chocho_boundaries.shp
+
+# Tokyo bounding box used to pre-filter the Kanto-wide GTFS feed.
+bbox:
+  min_lat: 35.50
+  max_lat: 35.85
+  min_lon: 139.55
+  max_lon: 139.92
+
+# The Yamanote Line is the network reference point (BFS source + distance anchor).
+yamanote_route_id: JR-East.Yamanote
+
+# Feature groups. `servable_exclude` is dropped from the greenfield-siting model
+# because a hypothetical new station has no schedule (CLAUDE.md rule 4).
+features:
+  connectivity:
+    - n_routes
+    - min_transfers_yamanote
+    - mean_route_degree_cent
+    - mean_route_btw_cent
+    - max_route_btw_cent
+  service:
+    - daily_stop_events
+  geography:
+    - km_to_yamanote
+  demographics:
+    - pop_800m_catchment
+  categorical:
+    - ward_jp
+  # Phase 2 post-paper extension (employment/daytime pop, POI density, land use).
+  planned:
+    - employment_800m
+    - poi_density_800m
+    - land_use_mix
+
+servable_exclude:
+  - daily_stop_events
+
+target:
+  raw: ridership_2019
+  transformed: log_ridership   # ln(1 + y); serving owns the expm1 inverse
+
+# Catchment radius (metres) for population / POI aggregation around a station.
+catchment_radius_m: 800
+
+# Tokyo coordinate bounds enforced by the serving layer (Pydantic -> 422).
+serving_bounds:
+  min_lat: 35.50
+  max_lat: 35.90
+  min_lon: 139.50
+  max_lon: 139.95
