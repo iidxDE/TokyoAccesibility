@@ -3,13 +3,14 @@
 Ports ``data/feature_build.py::load_gtfs`` and the bbox pre-filter in
 ``data/filter_gtfs.py`` into the shared package. Reads the raw Kanto-wide GTFS,
 filters stops to the Tokyo bounding box, cascades that filter to
-``stop_times`` (chunked) and ``trips``, derives a unified ``station_key`` (and a
-Japanese ``jp_name`` for ridership matching) from the bilingual ``stop_name``
-field, and writes clean intermediate tables to ``data/interim``.
+``stop_times`` (chunked) and ``trips``, derives the canonical ``station_key``
+(the Japanese station name) plus a romanized ``label_en`` from the bilingual
+``stop_name`` field, and writes clean intermediate tables to ``data/interim``.
 """
 
 from __future__ import annotations
 
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -21,23 +22,35 @@ from tokyo_ridership.config import interim_path, load_config, raw_path
 CHUNK_SIZE = 500_000
 
 
-def station_key(stop_name: str | float) -> str | None:
-    """English portion of a bilingual ``"<Kanji> <English>"`` stop name.
+def japanese_name(stop_name: str | float) -> str | None:
+    """Canonical station key: the Japanese (kanji) portion of the bilingual name.
 
-    Collapses per-line records (e.g. ``Yamanote.Tokyo`` and ``Tokyo``) under one
-    key. Falls back to the whole name when there is no space separator.
+    Keying on the Japanese name (rather than the English romanization) unifies
+    per-line records robustly: the current feed romanizes some hubs
+    inconsistently (e.g. ``東京 Tōkyō`` vs ``東京 Tokyo``), which would split one
+    physical station into two English keys and corrupt its connectivity/service
+    features. The Japanese name is consistent and also matches the ridership feed.
+    """
+    if pd.isna(stop_name):
+        return None
+    return str(stop_name).split(" ", 1)[0].strip()
+
+
+def english_label(stop_name: str | float) -> str | None:
+    """Romanized English portion, diacritics stripped (``Tōkyō`` -> ``Tokyo``).
+
+    A human-readable display label; ``None`` when the name carries no English
+    part. Canonicalized per station in :func:`load_clean_gtfs`.
     """
     if pd.isna(stop_name):
         return None
     parts = str(stop_name).split(" ", 1)
-    return parts[1].strip() if len(parts) > 1 else parts[0].strip()
-
-
-def jp_name(stop_name: str | float) -> str | None:
-    """Japanese (kanji) portion of a bilingual stop name."""
-    if pd.isna(stop_name):
+    if len(parts) < 2:
         return None
-    return str(stop_name).split(" ", 1)[0].strip()
+    eng = parts[1].strip()
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", eng) if not unicodedata.combining(c)
+    )
 
 
 def filter_stops_to_bbox(stops: pd.DataFrame, bbox: dict[str, float]) -> pd.DataFrame:
@@ -80,7 +93,7 @@ def _filter_stop_times(
 def load_clean_gtfs(cfg: dict[str, Any]) -> dict[str, pd.DataFrame]:
     """Return Tokyo-filtered, key-unified GTFS tables.
 
-    Keys: ``stops`` (stop_id, station_key, jp_name, coords), ``stop_times``
+    Keys: ``stops`` (stop_id, station_key, label_en, coords), ``stop_times``
     (trip_id, stop_id, stop_sequence), ``trips`` (trip_id, route_id), ``routes``.
     """
     src = cfg["sources"]["gtfs"]
@@ -89,8 +102,15 @@ def load_clean_gtfs(cfg: dict[str, Any]) -> dict[str, pd.DataFrame]:
     stops = filter_stops_to_bbox(stops, cfg["bbox"])
     stops["stop_lat"] = stops["stop_lat"].astype(float)
     stops["stop_lon"] = stops["stop_lon"].astype(float)
-    stops["station_key"] = stops["stop_name"].map(station_key)
-    stops["jp_name"] = stops["stop_name"].map(jp_name)
+    stops["station_key"] = stops["stop_name"].map(japanese_name)
+    stops["label_en"] = stops["stop_name"].map(english_label)
+    # One canonical English label per station (the most common romanization).
+    canonical = (
+        stops.dropna(subset=["station_key", "label_en"])
+        .groupby("station_key")["label_en"]
+        .agg(lambda s: s.mode().iat[0] if not s.mode().empty else s.iat[0])
+    )
+    stops["label_en"] = stops["station_key"].map(canonical)
 
     keep_ids = _keep_stop_ids(stops)
     stop_times, trip_ids = _filter_stop_times(
@@ -102,7 +122,7 @@ def load_clean_gtfs(cfg: dict[str, Any]) -> dict[str, pd.DataFrame]:
 
     routes = pd.read_csv(raw_path(cfg, src["routes"]), dtype=str)
 
-    stop_cols = ["stop_id", "station_key", "jp_name", "stop_lat", "stop_lon"]
+    stop_cols = ["stop_id", "station_key", "label_en", "stop_lat", "stop_lon"]
     if "parent_station" in stops.columns:
         stop_cols.append("parent_station")
     st_cols = [c for c in ("trip_id", "stop_id", "stop_sequence") if c in stop_times]

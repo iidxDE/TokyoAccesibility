@@ -7,29 +7,31 @@ import math
 import pandas as pd
 
 from tokyo_ridership.data.load_gtfs import (
+    english_label,
     filter_stops_to_bbox,
-    jp_name,
-    station_key,
+    japanese_name,
 )
 from tokyo_ridership.data.load_ridership import _strip_ws
 
 
-def test_station_key_takes_english_portion() -> None:
-    assert station_key("東京 Tokyo") == "Tokyo"
-    assert station_key("渋谷 Shibuya") == "Shibuya"
+def test_station_key_is_japanese_name() -> None:
+    assert japanese_name("東京 Tokyo") == "東京"
+    assert japanese_name("渋谷 Shibuya") == "渋谷"
 
 
-def test_station_key_falls_back_to_whole_name() -> None:
-    assert station_key("Tokyo") == "Tokyo"
+def test_japanese_name_handles_missing() -> None:
+    assert japanese_name(float("nan")) is None
 
 
-def test_station_key_handles_missing() -> None:
-    assert station_key(float("nan")) is None
+def test_english_label_strips_diacritics() -> None:
+    # the whole point of the fix: macron variants collapse to one label
+    assert english_label("東京 Tōkyō") == "Tokyo"
+    assert english_label("東京 Tokyo") == "Tokyo"
 
 
-def test_jp_name_takes_kanji_portion() -> None:
-    assert jp_name("東京 Tokyo") == "東京"
-    assert jp_name(float("nan")) is None
+def test_english_label_none_without_english() -> None:
+    assert english_label("東京") is None
+    assert english_label(float("nan")) is None
 
 
 def test_strip_ws_removes_ascii_and_fullwidth_space() -> None:
