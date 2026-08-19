@@ -67,6 +67,7 @@ def build_chome(cfg: dict[str, Any]) -> gpd.GeoDataFrame:
     pop = load_population(cfg)
     bounds = load_boundaries(cfg)
     chome = bounds.merge(pop, on="KEY_CODE", how="left")
+    chome["population"] = chome["population"].fillna(0.0)
 
     # Multipart chome (islands, river-split parcels) arrive as several rows
     # sharing one KEY_CODE and one population. Dissolve to a single geometry
