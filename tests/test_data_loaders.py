@@ -10,13 +10,19 @@ from tokyo_ridership.data.load_gtfs import (
     english_label,
     filter_stops_to_bbox,
     japanese_name,
+    normalize_station_name,
 )
-from tokyo_ridership.data.load_ridership import _strip_ws
 
 
 def test_station_key_is_japanese_name() -> None:
     assert japanese_name("東京 Tokyo") == "東京"
     assert japanese_name("渋谷 Shibuya") == "渋谷"
+
+
+def test_station_key_folds_kana_and_bracket_variants() -> None:
+    # ヶ/ケ split and 〈alt-name〉 parentheticals must collapse to one key
+    assert japanese_name("市ヶ谷 Ichigaya") == japanese_name("市ケ谷 Ichigaya")
+    assert japanese_name("明治神宮前〈原宿〉 Meiji-jingumae") == "明治神宮前"
 
 
 def test_japanese_name_handles_missing() -> None:
@@ -34,9 +40,14 @@ def test_english_label_none_without_english() -> None:
     assert english_label(float("nan")) is None
 
 
-def test_strip_ws_removes_ascii_and_fullwidth_space() -> None:
-    # full-width space (U+3000) and ASCII space both stripped
-    assert _strip_ws("東 京　駅") == "東京駅"
+def test_normalize_strips_whitespace_and_folds_ke() -> None:
+    # full-width (U+3000) + ASCII space stripped; small ヶ folded to ケ
+    assert normalize_station_name("東 京　駅") == "東京駅"
+    assert normalize_station_name("霞ヶ関") == "霞ケ関"
+
+
+def test_normalize_handles_missing() -> None:
+    assert normalize_station_name(float("nan")) is None
 
 
 def test_filter_stops_to_bbox_keeps_only_inside() -> None:

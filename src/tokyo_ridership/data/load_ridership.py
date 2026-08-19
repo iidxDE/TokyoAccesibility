@@ -3,13 +3,13 @@
 Ports ``data/feature_build.py::load_ridership`` and
 ``match_ridership_to_stations``. Reads the MLIT S12-20 (FY2019) ridership
 shapefile, sums figures per station across operators, and matches them to GTFS
-stations on the whitespace-stripped kanji ``jp_name``. Writes a per-station
-target table (``station_key`` -> ``ridership_2019``, ``log_ridership``).
+stations on the normalized Japanese station name (see
+:func:`normalize_station_name`). Writes a per-station target table
+(``station_key`` -> ``ridership_2019``, ``log_ridership``).
 """
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import geopandas as gpd
@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from tokyo_ridership.config import interim_path, load_config, raw_path
+from tokyo_ridership.data.load_gtfs import normalize_station_name
 
 # MLIT S12-20 field mapping: name / operator / line / FY2019 daily passengers.
 RIDERSHIP_COLS = {
@@ -27,18 +28,18 @@ RIDERSHIP_COLS = {
 }
 
 
-def _strip_ws(name: object) -> str:
-    """Drop ASCII and full-width whitespace so kanji names compare cleanly."""
-    return re.sub(r"[\s　]+", "", str(name))
-
-
 def load_ridership(cfg: dict[str, Any]) -> pd.DataFrame:
-    """Aggregate MLIT FY2019 ridership per Japanese station name."""
+    """Aggregate MLIT FY2019 ridership per normalized Japanese station name.
+
+    Grouping on the normalized name (rather than the raw ``S12_001``) sums
+    operators correctly even when they spell the station differently (ヶ/ケ, etc).
+    """
     shp = raw_path(cfg, cfg["sources"]["mlit_ridership_shp"])
     rs = gpd.read_file(shp, encoding="cp932").rename(columns=RIDERSHIP_COLS)
     rs["ridership_2019"] = pd.to_numeric(rs["ridership_2019"], errors="coerce")
     rs = rs[rs["ridership_2019"] > 0].dropna(subset=["ridership_2019"])
-    return rs.groupby("station_name_jp", as_index=False).agg(
+    rs["station_jp_norm"] = rs["station_name_jp"].map(normalize_station_name)
+    return rs.groupby("station_jp_norm", as_index=False).agg(
         ridership_2019=("ridership_2019", "sum"),
         n_operators=("operator", "nunique"),
     )
@@ -53,13 +54,12 @@ def match_to_stations(cfg: dict[str, Any], ridership: pd.DataFrame) -> pd.DataFr
     stops = pd.read_parquet(interim_path(cfg, cfg["interim"]["gtfs_stops"]))
     station_keys = stops["station_key"].dropna().unique()
 
-    ridership = ridership.copy()
-    ridership["jp_clean"] = ridership["station_name_jp"].map(_strip_ws)
-    lookup = ridership.set_index("jp_clean")["ridership_2019"].to_dict()
+    # station_key is already normalized (load_gtfs); MLIT is keyed on the same.
+    lookup = ridership.set_index("station_jp_norm")["ridership_2019"].to_dict()
 
     rows: list[dict[str, Any]] = []
     for sk in station_keys:
-        val = lookup.get(_strip_ws(sk))
+        val = lookup.get(sk)
         rows.append(
             {
                 "station_key": sk,

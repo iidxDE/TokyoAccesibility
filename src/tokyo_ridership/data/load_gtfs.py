@@ -10,6 +10,7 @@ filters stops to the Tokyo bounding box, cascades that filter to
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -21,19 +22,42 @@ from tokyo_ridership.config import interim_path, load_config, raw_path
 # stop_times is Kanto-wide (~100M+ rows across the region); read it in chunks.
 CHUNK_SIZE = 500_000
 
+# 〈alt-name〉 parentheticals used by the feed, e.g. 明治神宮前〈原宿〉.
+_ANGLE_BRACKETS = re.compile(r"〈[^〉]*〉")
+
+
+def normalize_station_name(name: str | float) -> str | None:
+    """Canonicalize a Japanese station name for keying + cross-source matching.
+
+    Applies NFKC (unifies half/full-width and compatibility kanji), drops
+    ``〈alt-name〉`` parentheticals, strips all whitespace, and folds the
+    place-name small ``ヶ`` into ``ケ``. These are the variants that otherwise
+    split one physical station across sources (e.g. ``市ヶ谷`` vs ``市ケ谷``) or
+    break the ridership name match (``霞ケ関`` vs ``霞ヶ関``, ``明治神宮前〈原宿〉``
+    vs ``明治神宮前``).
+    """
+    if pd.isna(name):
+        return None
+    s = unicodedata.normalize("NFKC", str(name))
+    s = _ANGLE_BRACKETS.sub("", s)
+    s = re.sub(r"[\s　]+", "", s)
+    s = s.replace("ヶ", "ケ")
+    return s or None
+
 
 def japanese_name(stop_name: str | float) -> str | None:
-    """Canonical station key: the Japanese (kanji) portion of the bilingual name.
+    """Canonical station key: the normalized Japanese portion of the name.
 
     Keying on the Japanese name (rather than the English romanization) unifies
-    per-line records robustly: the current feed romanizes some hubs
-    inconsistently (e.g. ``東京 Tōkyō`` vs ``東京 Tokyo``), which would split one
-    physical station into two English keys and corrupt its connectivity/service
-    features. The Japanese name is consistent and also matches the ridership feed.
+    per-line records robustly: the feed romanizes some hubs inconsistently (e.g.
+    ``東京 Tōkyō`` vs ``東京 Tokyo``), which would split one physical station into
+    two English keys and corrupt its connectivity/service features. The result is
+    run through :func:`normalize_station_name` so Japanese-side variants (ヶ/ケ,
+    〈alt-name〉, width) collapse too.
     """
     if pd.isna(stop_name):
         return None
-    return str(stop_name).split(" ", 1)[0].strip()
+    return normalize_station_name(str(stop_name).split(" ", 1)[0])
 
 
 def english_label(stop_name: str | float) -> str | None:
