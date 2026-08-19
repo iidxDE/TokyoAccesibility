@@ -26,10 +26,10 @@ Goal: a reproducible skeleton before any modeling.
 
 Goal: raw sources → clean intermediate tables. Port existing notebook logic.
 
-- [ ] GTFS parse (stops/stop_times/trips/routes, station-key unification) — `src/tokyo_ridership/data/load_gtfs.py`
-- [ ] MLIT ridership aggregation + kanji name matching — `src/tokyo_ridership/data/load_ridership.py`
-- [ ] e-Stat census loader (Shift-JIS decode, chōme filtering) — `src/tokyo_ridership/data/load_census.py`
-- [ ] Wire `make data` to run the three loaders — `Makefile`
+- [x] GTFS parse (stops/stop_times/trips/routes, station-key unification) — `src/tokyo_ridership/data/load_gtfs.py`
+- [x] MLIT ridership aggregation + kanji name matching — `src/tokyo_ridership/data/load_ridership.py`
+- [x] e-Stat census loader (Shift-JIS decode, chōme filtering) — `src/tokyo_ridership/data/load_census.py`
+- [x] Wire `make data` to run the three loaders — `Makefile`
 
 ## Phase 2 — Feature engineering (the shared path)
 

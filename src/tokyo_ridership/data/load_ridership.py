@@ -1,16 +1,91 @@
 """MLIT ridership aggregation + kanji name matching (Phase 1).
 
 Ports ``data/feature_build.py::load_ridership`` and
-``match_ridership_to_stations``: aggregates the S12-20 FY2019 records per
-station across operators and matches them to GTFS stations on the kanji
-component of ``stop_name``.
+``match_ridership_to_stations``. Reads the MLIT S12-20 (FY2019) ridership
+shapefile, sums figures per station across operators, and matches them to GTFS
+stations on the whitespace-stripped kanji ``jp_name``. Writes a per-station
+target table (``station_key`` -> ``ridership_2019``, ``log_ridership``).
 """
 
 from __future__ import annotations
 
+import re
+from typing import Any
 
-def main() -> None:  # pragma: no cover - implemented in Phase 1
-    raise NotImplementedError("load_ridership is implemented in Phase 1")
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+
+from tokyo_ridership.config import interim_path, load_config, raw_path
+
+# MLIT S12-20 field mapping: name / operator / line / FY2019 daily passengers.
+RIDERSHIP_COLS = {
+    "S12_001": "station_name_jp",
+    "S12_002": "operator",
+    "S12_003": "line_name",
+    "S12_041": "ridership_2019",
+}
+
+
+def _strip_ws(name: object) -> str:
+    """Drop ASCII and full-width whitespace so kanji names compare cleanly."""
+    return re.sub(r"[\s　]+", "", str(name))
+
+
+def load_ridership(cfg: dict[str, Any]) -> pd.DataFrame:
+    """Aggregate MLIT FY2019 ridership per Japanese station name."""
+    shp = raw_path(cfg, cfg["sources"]["mlit_ridership_shp"])
+    rs = gpd.read_file(shp, encoding="cp932").rename(columns=RIDERSHIP_COLS)
+    rs["ridership_2019"] = pd.to_numeric(rs["ridership_2019"], errors="coerce")
+    rs = rs[rs["ridership_2019"] > 0].dropna(subset=["ridership_2019"])
+    return rs.groupby("station_name_jp", as_index=False).agg(
+        ridership_2019=("ridership_2019", "sum"),
+        n_operators=("operator", "nunique"),
+    )
+
+
+def match_to_stations(cfg: dict[str, Any], ridership: pd.DataFrame) -> pd.DataFrame:
+    """Match aggregated ridership to GTFS stations via the kanji name."""
+    stops = pd.read_parquet(interim_path(cfg, cfg["interim"]["gtfs_stops"]))
+    name_lookup = (
+        stops.dropna(subset=["station_key", "jp_name"])
+        .groupby("station_key")["jp_name"]
+        .first()
+    )
+
+    ridership = ridership.copy()
+    ridership["jp_clean"] = ridership["station_name_jp"].map(_strip_ws)
+    lookup = ridership.set_index("jp_clean")["ridership_2019"].to_dict()
+
+    rows: list[dict[str, Any]] = []
+    for sk, jp in name_lookup.items():
+        val = lookup.get(_strip_ws(jp))
+        rows.append(
+            {
+                "station_key": sk,
+                "ridership_2019": val,
+                "log_ridership": float(np.log1p(val))
+                if val is not None and val > 0
+                else None,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def main() -> None:
+    cfg = load_config()
+    print("[load_ridership] loading + aggregating MLIT ridership...")
+    ridership = load_ridership(cfg)
+    matched = match_to_stations(cfg, ridership)
+    matched.to_parquet(interim_path(cfg, cfg["interim"]["ridership"]), index=False)
+
+    n = int(matched["ridership_2019"].notna().sum())
+    total = len(matched)
+    pct = 100 * n / total if total else 0
+    print(
+        f"[load_ridership] matched ridership for {n}/{total} stations "
+        f"({pct:.0f}%) from {len(ridership)} MLIT records"
+    )
 
 
 if __name__ == "__main__":

@@ -8,6 +8,15 @@ paths:
   models: models
   reports: reports
 
+# Clean intermediate tables written by the Phase 1 loaders (under paths.data_interim).
+interim:
+  gtfs_stops: gtfs_stops.parquet
+  gtfs_stop_times: gtfs_stop_times.parquet
+  gtfs_trips: gtfs_trips.parquet
+  gtfs_routes: gtfs_routes.parquet
+  ridership: ridership.parquet
+  census_chome: census_chome.parquet   # geoparquet: chome population + geometry
+
 # Raw source filenames, resolved under paths.data_raw unless noted.
 # Mirrors the prototype in data/feature_build.py.
 sources:
