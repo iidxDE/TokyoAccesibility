@@ -1,17 +1,115 @@
-"""Haversine, 800 m catchments, distance-to-Yamanote, + new features (Phase 2).
+"""Haversine, 800 m catchments, distance-to-Yamanote, ward assignment (Phase 2).
 
-Ports ``distance_to_yamanote`` and ``population_features`` catchment logic, and
-adds the post-paper feature families: employment / daytime population
-(e-Stat Economic Census), POI density (OSMnx), and land-use mix (MLIT NLNI).
-The 800 m catchment computation is unit-tested per CLAUDE.md.
+Ports ``data/feature_build.py`` geographic/demographic logic:
+``distance_to_yamanote``, the 800 m population catchment from
+``population_features``, and the stop->ward spatial join from ``assign_wards``.
+
+Post-paper feature families (employment / daytime population, POI density,
+land-use mix) are added here in a follow-up once their source data is acquired.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 
-def main() -> None:  # pragma: no cover - implemented in Phase 2
-    raise NotImplementedError("accessibility is implemented in Phase 2")
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+from shapely.validation import make_valid
+
+# JGD2011 / Japan Plane Rectangular CS IX — metres, for buffering around Tokyo.
+METRIC_CRS = "EPSG:6691"
+EARTH_RADIUS_KM = 6371.0
 
 
-if __name__ == "__main__":
-    main()
+def station_points(stops: pd.DataFrame) -> pd.DataFrame:
+    """One representative (lat, lon) per ``station_key`` (first occurrence)."""
+    return (
+        stops.dropna(subset=["station_key"])
+        .groupby("station_key")[["stop_lat", "stop_lon"]]
+        .first()
+        .reset_index()
+    )
+
+
+def _station_geodataframe(stations: pd.DataFrame) -> gpd.GeoDataFrame:
+    return gpd.GeoDataFrame(
+        stations,
+        geometry=gpd.points_from_xy(stations["stop_lon"], stations["stop_lat"]),
+        crs="EPSG:4326",
+    )
+
+
+def km_to_yamanote(
+    stops: pd.DataFrame,
+    trips: pd.DataFrame,
+    stop_times: pd.DataFrame,
+    yamanote_route: str,
+) -> pd.DataFrame:
+    """Great-circle distance (km) from each station to the nearest Yamanote stop."""
+    yama_trips = set(trips.loc[trips["route_id"] == yamanote_route, "trip_id"])
+    yama_stop_ids = stop_times.loc[
+        stop_times["trip_id"].isin(yama_trips), "stop_id"
+    ].unique()
+    yama_pts = stops.loc[
+        stops["stop_id"].isin(yama_stop_ids), ["stop_lat", "stop_lon"]
+    ].to_numpy()
+
+    stations = station_points(stops)
+    if len(yama_pts) == 0:
+        stations["km_to_yamanote"] = np.nan
+        return stations[["station_key", "km_to_yamanote"]]
+
+    yama_lat = np.radians(yama_pts[:, 0])
+    yama_lon = np.radians(yama_pts[:, 1])
+    lat = np.radians(stations["stop_lat"].to_numpy())[:, None]
+    lon = np.radians(stations["stop_lon"].to_numpy())[:, None]
+
+    dlat = yama_lat[None, :] - lat
+    dlon = yama_lon[None, :] - lon
+    a = (
+        np.sin(dlat / 2) ** 2
+        + np.cos(lat) * np.cos(yama_lat[None, :]) * np.sin(dlon / 2) ** 2
+    )
+    dist = 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
+    stations["km_to_yamanote"] = dist.min(axis=1)
+    return stations[["station_key", "km_to_yamanote"]]
+
+
+def pop_catchment(
+    stops: pd.DataFrame, census_chome: gpd.GeoDataFrame, radius_m: float
+) -> pd.DataFrame:
+    """Total population of chome intersecting each station's ``radius_m`` buffer."""
+    stations = _station_geodataframe(station_points(stops)).to_crs(METRIC_CRS)
+    stations["geometry"] = stations.buffer(radius_m)
+
+    chome = census_chome.to_crs(METRIC_CRS)[["population", "geometry"]]
+    joined = gpd.sjoin(stations, chome, how="left", predicate="intersects")
+    catchment = (
+        joined.groupby("station_key")["population"]
+        .sum()
+        .rename("pop_800m_catchment")
+        .reset_index()
+    )
+    return catchment
+
+
+def assign_ward(
+    stops: pd.DataFrame, wards_geojson: str | Path, outside_label: str = "Outside-23"
+) -> pd.DataFrame:
+    """Spatially join stations to the 23 special-ward polygons.
+
+    Stations outside the 23 wards get ``outside_label`` (they remain in the
+    dataset with an explicit out-of-ward marker, matching the reference matrix).
+    """
+    wards = gpd.read_file(wards_geojson).to_crs("EPSG:4326")
+    wards["geometry"] = wards.geometry.apply(make_valid)
+    wards["ward_jp"] = wards["N03_004"]
+
+    stations = _station_geodataframe(station_points(stops))
+    joined = gpd.sjoin(
+        stations, wards[["ward_jp", "geometry"]], how="left", predicate="within"
+    )
+    joined = joined.drop_duplicates(subset="station_key")
+    joined["ward_jp"] = joined["ward_jp"].fillna(outside_label)
+    return joined[["station_key", "ward_jp"]].reset_index(drop=True)

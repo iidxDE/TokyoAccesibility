@@ -17,6 +17,10 @@ interim:
   ridership: ridership.parquet
   census_chome: census_chome.parquet   # geoparquet: chome population + geometry
 
+# Assembled feature matrix written by Phase 2 (under paths.data_processed).
+processed:
+  station_features: station_features.parquet
+
 # Raw source filenames, resolved under paths.data_raw unless noted.
 # Mirrors the prototype in data/feature_build.py.
 sources:

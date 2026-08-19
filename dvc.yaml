@@ -24,13 +24,13 @@ stages:
           - catchment_radius_m
           - yamanote_route_id
     outs:
-      - data/processed/station_features.csv
+      - data/processed/station_features.parquet
 
   train:
     cmd: python -m tokyo_ridership.models.train
     deps:
       - src/tokyo_ridership/models
-      - data/processed/station_features.csv
+      - data/processed/station_features.parquet
     params:
       - params.yaml:
           - seed

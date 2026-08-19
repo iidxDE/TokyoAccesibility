@@ -37,12 +37,12 @@ Goal: one feature-computation module used by BOTH training and serving.
 This is the anti-skew boundary — design the interface as
 `coordinates/context → feature vector` so a single point can be scored later.
 
-- [ ] Route-level graph, centrality, BFS-to-Yamanote — `src/tokyo_ridership/features/network_graph.py`
-- [ ] Haversine, 800 m catchments, distance-to-Yamanote — `src/tokyo_ridership/features/accessibility.py`
+- [x] Route-level graph, centrality, BFS-to-Yamanote — `src/tokyo_ridership/features/network_graph.py`
+- [x] Haversine, 800 m catchments, distance-to-Yamanote — `src/tokyo_ridership/features/accessibility.py`
 - [ ] **New features**: employment/daytime pop (e-Stat Economic Census), POI density (OSMnx), land-use mix (MLIT NLNI) — `src/tokyo_ridership/features/accessibility.py`
-- [ ] Assemble the 474-station feature matrix — `src/tokyo_ridership/features/build_features.py`
-- [ ] Unit tests for graph construction + catchment logic — `tests/test_features.py`
-- [ ] Wire `make features` — `Makefile`
+- [x] Assemble the station feature matrix — `src/tokyo_ridership/features/build_features.py`
+- [x] Unit tests for graph construction + catchment logic — `tests/test_features.py`
+- [x] Wire `make features` — `Makefile`
 
 ## Phase 3 — Evaluation harness (build before any experiment)
 

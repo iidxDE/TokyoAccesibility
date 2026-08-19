@@ -45,21 +45,21 @@ def load_ridership(cfg: dict[str, Any]) -> pd.DataFrame:
 
 
 def match_to_stations(cfg: dict[str, Any], ridership: pd.DataFrame) -> pd.DataFrame:
-    """Match aggregated ridership to GTFS stations via the kanji name."""
+    """Match aggregated ridership to GTFS stations by the (Japanese) station_key.
+
+    ``station_key`` is the canonical Japanese station name, so it matches the
+    MLIT Japanese station name directly (whitespace-stripped).
+    """
     stops = pd.read_parquet(interim_path(cfg, cfg["interim"]["gtfs_stops"]))
-    name_lookup = (
-        stops.dropna(subset=["station_key", "jp_name"])
-        .groupby("station_key")["jp_name"]
-        .first()
-    )
+    station_keys = stops["station_key"].dropna().unique()
 
     ridership = ridership.copy()
     ridership["jp_clean"] = ridership["station_name_jp"].map(_strip_ws)
     lookup = ridership.set_index("jp_clean")["ridership_2019"].to_dict()
 
     rows: list[dict[str, Any]] = []
-    for sk, jp in name_lookup.items():
-        val = lookup.get(_strip_ws(jp))
+    for sk in station_keys:
+        val = lookup.get(_strip_ws(sk))
         rows.append(
             {
                 "station_key": sk,
