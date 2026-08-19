@@ -20,6 +20,7 @@ from tokyo_ridership.config import interim_path, load_config, raw_path
 # e-Stat 2020 census: total population of the chome.
 POP_COL = "T001081001"
 CHOME_LEVEL = "4"  # HYOSYO code for the finest (chome) aggregation level
+CHOME_KEY_LEN = 11  # chome KEY_CODEs are 11 digits; shorter = parent aggregates
 
 
 def load_population(cfg: dict[str, Any]) -> pd.DataFrame:
@@ -46,11 +47,19 @@ def load_population(cfg: dict[str, Any]) -> pd.DataFrame:
 
 
 def load_boundaries(cfg: dict[str, Any]) -> gpd.GeoDataFrame:
-    """Return chome boundary polygons keyed by ``KEY_CODE`` (WGS84)."""
+    """Return chome boundary polygons keyed by ``KEY_CODE`` (WGS84).
+
+    The shapefile also ships coarser parent polygons (2- and 9-digit KEY_CODEs
+    for prefecture/oaza levels, covering areas outside the chome-subdivided core
+    whose population is only reported at HYOSYO=2). They carry no chome
+    population, overlap no populated chome, and would only add mixed-granularity
+    rows, so we keep chome granularity only.
+    """
     path = raw_path(cfg, cfg["sources"]["census_boundaries"])
     bounds = gpd.read_file(path).to_crs("EPSG:4326")
     bounds["KEY_CODE"] = bounds["KEY_CODE"].astype(str)
-    return bounds[["KEY_CODE", "geometry"]]
+    bounds = bounds[bounds["KEY_CODE"].str.len() == CHOME_KEY_LEN]
+    return bounds[["KEY_CODE", "geometry"]].reset_index(drop=True)
 
 
 def build_chome(cfg: dict[str, Any]) -> gpd.GeoDataFrame:
@@ -70,7 +79,7 @@ def main() -> None:
     with_pop = int(chome["population"].notna().sum())
     print(
         f"[load_census] wrote {n} chome polygons "
-        f"({with_pop} with population, "
+        f"({with_pop} with population, {n - with_pop} suppressed/zero, "
         f"total pop {int(chome['population'].sum()):,})"
     )
 

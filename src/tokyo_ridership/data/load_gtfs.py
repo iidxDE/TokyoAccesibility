@@ -106,10 +106,16 @@ def load_clean_gtfs(cfg: dict[str, Any]) -> dict[str, pd.DataFrame]:
     if "parent_station" in stops.columns:
         stop_cols.append("parent_station")
     st_cols = [c for c in ("trip_id", "stop_id", "stop_sequence") if c in stop_times]
+    stop_times_out = stop_times[st_cols].reset_index(drop=True)
+    if "stop_sequence" in stop_times_out.columns:
+        # stop_sequence is a clean GTFS integer; store it typed rather than str.
+        stop_times_out["stop_sequence"] = pd.to_numeric(
+            stop_times_out["stop_sequence"]
+        ).astype("int32")
 
     return {
         "stops": stops[stop_cols].reset_index(drop=True),
-        "stop_times": stop_times[st_cols].reset_index(drop=True),
+        "stop_times": stop_times_out,
         "trips": trips[["trip_id", "route_id"]].reset_index(drop=True),
         "routes": routes.reset_index(drop=True),
     }
