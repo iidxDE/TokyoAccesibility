@@ -60,6 +60,26 @@ def test_station_modes_primary_by_priority() -> None:
     assert modes.loc["C", "station_mode"] == "tram"  # tram-only stays tram
 
 
+def test_station_modes_agt_override() -> None:
+    # Nippori-Toneri is GTFS route_type=1 (subway) but is an automated guideway;
+    # the curated override must relabel it "agt", not "subway".
+    stops = pd.DataFrame(
+        {
+            "stop_id": ["a"],
+            "station_key": ["X"],
+            "stop_lat": [35.7],
+            "stop_lon": [139.7],
+        }
+    )
+    trips = pd.DataFrame({"trip_id": ["t"], "route_id": ["Toei.NipporiToneri"]})
+    stop_times = pd.DataFrame(
+        {"trip_id": ["t"], "stop_id": ["a"], "stop_sequence": [0]}
+    )
+    routes = pd.DataFrame({"route_id": ["Toei.NipporiToneri"], "route_type": ["1"]})
+    modes = station_modes(stops, trips, stop_times, routes).set_index("station_key")
+    assert modes.loc["X", "station_mode"] == "agt"
+
+
 def test_station_connectivity_counts() -> None:
     conn = station_connectivity(_STOPS, _TRIPS, _STOP_TIMES, yamanote_route="R1")
     by_station = conn.set_index("station_key")
