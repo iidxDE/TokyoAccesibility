@@ -5,7 +5,8 @@ undirected graph whose nodes are GTFS routes, with an edge between two routes
 whenever they share at least one physical station (encoding transfer structure).
 From it we derive, per station: route count, the minimum route-to-route transfer
 distance to the Yamanote Line (BFS), aggregated degree/betweenness centrality of
-the routes serving it, and the daily scheduled stop-event count.
+the routes serving it, and the daily scheduled stop-event count. Also exposes the
+station's primary transport mode (:func:`station_modes`) from GTFS ``route_type``.
 """
 
 from __future__ import annotations
@@ -13,6 +14,15 @@ from __future__ import annotations
 import networkx as nx
 import numpy as np
 import pandas as pd
+
+# GTFS route_type -> coarse transport mode. The paper's features are mode-blind,
+# so a tram stop and a Metro station with the same catchment/network position look
+# identical, yet their ridership differs by 1-2 orders of magnitude (the Toden
+# streetcar over-prediction). ``station_mode`` restores that distinction.
+_ROUTE_TYPE_MODE = {0: "tram", 1: "subway", 2: "rail", 12: "monorail"}
+# Priority (heaviest ridership-driving mode first) resolves mixed-mode stations:
+# a tram+rail interchange is a rail station; a tram-only stop stays "tram".
+_MODE_PRIORITY = {"rail": 0, "subway": 1, "monorail": 2, "tram": 3, "other": 4}
 
 
 def map_routes_stations(
@@ -95,3 +105,32 @@ def station_connectivity(
             }
         )
     return pd.DataFrame(rows)
+
+
+def station_modes(
+    stops: pd.DataFrame,
+    trips: pd.DataFrame,
+    stop_times: pd.DataFrame,
+    routes: pd.DataFrame,
+) -> pd.DataFrame:
+    """Primary transport mode per station from GTFS ``route_type``.
+
+    Each station is labelled by the heaviest mode among the routes serving it
+    (:data:`_MODE_PRIORITY`), so tram-only stops (Toden/Enoden/Setagaya) separate
+    from the heavy-rail network. Columns: ``station_key``, ``station_mode``.
+    """
+    st = map_routes_stations(stops, trips, stop_times)
+    route_type = pd.to_numeric(routes["route_type"], errors="coerce")
+    route_to_mode = dict(
+        zip(routes["route_id"], route_type.map(_ROUTE_TYPE_MODE), strict=True)
+    )
+    st = st.assign(mode=st["route_id"].map(route_to_mode).fillna("other"))
+
+    def _primary(modes: set[str]) -> str:
+        return min(modes, key=lambda mode: _MODE_PRIORITY.get(mode, 99))
+
+    return (
+        st.groupby("station_key")["mode"]
+        .apply(lambda s: _primary(set(s)))
+        .reset_index(name="station_mode")
+    )
