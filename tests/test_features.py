@@ -11,6 +11,7 @@ from tokyo_ridership.features.network_graph import (
     build_route_graph,
     map_routes_stations,
     station_connectivity,
+    station_modes,
 )
 
 # Toy network: routes R1, R2, R3.
@@ -46,6 +47,17 @@ def test_build_route_graph_edges_and_membership() -> None:
     assert graph.has_edge("R1", "R2")
     assert not graph.has_edge("R1", "R3")
     assert graph.degree("R3") == 0
+
+
+def test_station_modes_primary_by_priority() -> None:
+    # R1 heavy rail, R2/R3 tram. Station A (rail+tram) -> rail; C (tram only) -> tram.
+    routes = pd.DataFrame(
+        {"route_id": ["R1", "R2", "R3"], "route_type": ["2", "0", "0"]}
+    )
+    modes = station_modes(_STOPS, _TRIPS, _STOP_TIMES, routes).set_index("station_key")
+    assert modes.loc["A", "station_mode"] == "rail"  # heaviest mode wins
+    assert modes.loc["B", "station_mode"] == "rail"
+    assert modes.loc["C", "station_mode"] == "tram"  # tram-only stays tram
 
 
 def test_station_connectivity_counts() -> None:
