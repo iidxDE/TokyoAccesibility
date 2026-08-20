@@ -33,10 +33,10 @@ dependencies = [
 features = [
     "osmnx>=1.9",
 ]
-# Phase 3-4 — extended model roster, conformal intervals, spatial residual stats.
+# Phase 3-4 — extended model roster + spatial residual stats. (Prediction
+# intervals use in-house split-conformal from OOF residuals, no extra dep.)
 models = [
     "lightgbm>=4.3",
-    "mapie>=0.8",
     "libpysal>=4.9",
     "esda>=2.5",
 ]

@@ -49,11 +49,11 @@ This is the anti-skew boundary — design the interface as
 Goal: the fixed apparatus every model/feature-set passes through. Reusable
 functions, not inline cells.
 
-- [ ] Spatial-block fold generator (grid primary, ward folds as robustness check) — `src/tokyo_ridership/models/evaluate.py`
-- [ ] Nested spatial CV (inner tuning loop + outer eval loop, same block logic) — `src/tokyo_ridership/models/evaluate.py`
-- [ ] Prediction intervals (conformal via MAPIE or quantile objective) — `src/tokyo_ridership/models/evaluate.py`
-- [ ] Residual diagnostics: Moran's I + LISA on out-of-fold residuals — `src/tokyo_ridership/models/evaluate.py`
-- [ ] Single-call interface: `run(feature_set, model) → scores + intervals + residuals`
+- [x] Spatial-block fold generator (grid primary, ward folds as robustness check) — `src/tokyo_ridership/models/evaluate.py`
+- [x] Nested spatial CV (inner tuning loop + outer eval loop, same block logic) — `src/tokyo_ridership/models/evaluate.py`
+- [x] Prediction intervals (split-conformal from OOF residuals) — `src/tokyo_ridership/models/evaluate.py`
+- [x] Residual diagnostics: Moran's I + LISA on out-of-fold residuals — `src/tokyo_ridership/models/evaluate.py`
+- [x] Single-call interface: `run(feature_set, model) → scores + intervals + residuals`
 
 ## Phase 4 — Model experiments + selection
 
