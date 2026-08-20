@@ -65,7 +65,7 @@ features:
     - pop_800m_catchment
   categorical:
     - ward_jp
-    - station_mode   # GTFS route_type: tram/subway/rail/monorail (mode signal)
+    - station_mode   # transport mode: rail/subway/monorail/agt/tram (mode signal)
   # Phase 2 post-paper extension (employment/daytime pop, POI density, land use).
   planned:
     - employment_800m

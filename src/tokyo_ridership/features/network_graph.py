@@ -20,9 +20,22 @@ import pandas as pd
 # identical, yet their ridership differs by 1-2 orders of magnitude (the Toden
 # streetcar over-prediction). ``station_mode`` restores that distinction.
 _ROUTE_TYPE_MODE = {0: "tram", 1: "subway", 2: "rail", 12: "monorail"}
+# route_type cannot see automated guideway transit (rubber-tired people-movers):
+# GTFS tags Nippori-Toneri as subway (1) and Yurikamome as rail (2), but their
+# ridership is light-rail-scale, so they must not be lumped with heavy Metro/rail.
+# Curated by route_id (NOT by name — "ライナー" also matches the Keisei Skyliner,
+# which is a genuine rail express).
+_AGT_ROUTES = frozenset({"Toei.NipporiToneri", "Yurikamome.Yurikamome"})
 # Priority (heaviest ridership-driving mode first) resolves mixed-mode stations:
-# a tram+rail interchange is a rail station; a tram-only stop stays "tram".
-_MODE_PRIORITY = {"rail": 0, "subway": 1, "monorail": 2, "tram": 3, "other": 4}
+# a tram+rail interchange is a rail station; an AGT-only stop stays "agt".
+_MODE_PRIORITY = {
+    "rail": 0,
+    "subway": 1,
+    "monorail": 2,
+    "agt": 3,
+    "tram": 4,
+    "other": 5,
+}
 
 
 def map_routes_stations(
@@ -124,6 +137,9 @@ def station_modes(
     route_to_mode = dict(
         zip(routes["route_id"], route_type.map(_ROUTE_TYPE_MODE), strict=True)
     )
+    for route_id in _AGT_ROUTES:  # override the route_type mislabel
+        if route_id in route_to_mode:
+            route_to_mode[route_id] = "agt"
     st = st.assign(mode=st["route_id"].map(route_to_mode).fillna("other"))
 
     def _primary(modes: set[str]) -> str:
