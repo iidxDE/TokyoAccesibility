@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from math import log
+
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import box
 
-from tokyo_ridership.features.accessibility import km_to_yamanote, pop_catchment
+from tokyo_ridership.features.accessibility import (
+    catchment_sum,
+    km_to_yamanote,
+    pop_catchment,
+)
+from tokyo_ridership.features.landuse import landuse_features
 from tokyo_ridership.features.network_graph import (
     build_route_graph,
     map_routes_stations,
@@ -114,6 +121,55 @@ def test_pop_catchment_sums_only_intersecting_chome() -> None:
     )
     out = pop_catchment(stops, census, radius_m=800).set_index("station_key")
     assert out.loc["S", "pop_800m_catchment"] == 100.0
+
+
+_LANDUSE_STOP = pd.DataFrame(
+    {"stop_id": ["s"], "station_key": ["S"], "stop_lat": [35.70], "stop_lon": [139.70]}
+)
+
+
+def test_catchment_sum_generic_value_col() -> None:
+    # the generic catchment (employment reuses it) sums an arbitrary value column
+    polys = gpd.GeoDataFrame(
+        {"employment": [500.0, 900.0]},
+        geometry=[
+            box(139.695, 35.695, 139.705, 35.705),  # within 800 m
+            box(139.80, 35.80, 139.81, 35.81),  # far
+        ],
+        crs="EPSG:4326",
+    )
+    out = catchment_sum(
+        _LANDUSE_STOP, polys, 800, "employment", "employment_800m"
+    ).set_index("station_key")
+    assert out.loc["S", "employment_800m"] == 500.0
+
+
+def test_landuse_features_two_class_split() -> None:
+    # built west of the station meridian, green east -> the 800 m circle splits
+    # ~50/50, so built_frac ~ 0.5 and mix ~ ln 2.
+    lon0 = 139.70
+    mesh = gpd.GeoDataFrame(
+        {"landuse_class": ["built", "green"]},
+        geometry=[
+            box(lon0 - 0.05, 35.65, lon0, 35.75),
+            box(lon0, 35.65, lon0 + 0.05, 35.75),
+        ],
+        crs="EPSG:4326",
+    )
+    out = landuse_features(_LANDUSE_STOP, mesh, radius_m=800).set_index("station_key")
+    assert 0.45 < out.loc[S := "S", "landuse_built_frac"] < 0.55
+    assert abs(out.loc[S, "landuse_mix"] - log(2)) < 0.05
+
+
+def test_landuse_single_class_zero_entropy() -> None:
+    mesh = gpd.GeoDataFrame(
+        {"landuse_class": ["built"]},
+        geometry=[box(139.65, 35.65, 139.75, 35.75)],
+        crs="EPSG:4326",
+    )
+    out = landuse_features(_LANDUSE_STOP, mesh, radius_m=800).set_index("station_key")
+    assert out.loc["S", "landuse_built_frac"] == 1.0
+    assert out.loc["S", "landuse_mix"] < 1e-9
 
 
 def test_km_to_yamanote_distance() -> None:
