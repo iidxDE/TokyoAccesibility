@@ -16,6 +16,7 @@ interim:
   gtfs_routes: gtfs_routes.parquet
   ridership: ridership.parquet
   census_chome: census_chome.parquet   # geoparquet: chome population + geometry
+  landuse_mesh: landuse_mesh.parquet    # collapsed land-use class + geometry (metric CRS)
 
 # Assembled feature matrix written by Phase 2 (under paths.data_processed).
 processed:
@@ -37,6 +38,9 @@ sources:
   mlit_ridership_shp: S12-20_GML/S12-20_GML/S12-20_NumberOfPassengers.shp
   census_population: tokyo_chocho_population.txt
   census_boundaries: tokyo_chocho_boundaries.shp
+  # MLIT L03-b land-use mesh 5339. The .shp shipped without its .dbf (no
+  # attributes), so we read the self-contained geojson (geometry + class).
+  landuse_mesh: L03-b-21_5339.geojson
 
 # Tokyo bounding box used to pre-filter the Kanto-wide GTFS feed.
 bbox:
@@ -63,14 +67,17 @@ features:
     - km_to_yamanote
   demographics:
     - pop_800m_catchment
+  landuse:                    # MLIT L03-b land-use composition within the catchment
+    - landuse_built_frac
+    - landuse_mix
   categorical:
     - ward_jp
     - station_mode   # transport mode: rail/subway/monorail/agt/tram (mode signal)
-  # Phase 2 post-paper extension (employment/daytime pop, POI density, land use).
+  # Deferred. employment_800m awaits the Economic-Census <-> Population-Census
+  # area correspondence (the two use incompatible chome codes; name join ~93%).
   planned:
     - employment_800m
     - poi_density_800m
-    - land_use_mix
 
 servable_exclude:
   - daily_stop_events

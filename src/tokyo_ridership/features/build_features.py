@@ -24,7 +24,7 @@ from tokyo_ridership.config import (
     processed_path,
     raw_path,
 )
-from tokyo_ridership.features import accessibility, network_graph
+from tokyo_ridership.features import accessibility, landuse, network_graph
 
 
 def _station_base(stops: pd.DataFrame) -> pd.DataFrame:
@@ -49,6 +49,7 @@ def build_feature_matrix(cfg: dict[str, Any]) -> pd.DataFrame:
     stop_times = pd.read_parquet(interim_path(cfg, interim["gtfs_stop_times"]))
     routes = pd.read_parquet(interim_path(cfg, interim["gtfs_routes"]))
     census = gpd.read_parquet(interim_path(cfg, interim["census_chome"]))
+    landuse_mesh = gpd.read_parquet(interim_path(cfg, interim["landuse_mesh"]))
     ridership = pd.read_parquet(interim_path(cfg, interim["ridership"]))
 
     yamanote = cfg["yamanote_route_id"]
@@ -62,6 +63,7 @@ def build_feature_matrix(cfg: dict[str, Any]) -> pd.DataFrame:
     mode = network_graph.station_modes(stops, trips, stop_times, routes)
     distance = accessibility.km_to_yamanote(stops, trips, stop_times, yamanote)
     catchment = accessibility.pop_catchment(stops, census, radius)
+    landuse_feats = landuse.landuse_features(stops, landuse_mesh, radius)
     ward = accessibility.assign_ward(stops, wards_geojson)
 
     matrix = (
@@ -69,6 +71,7 @@ def build_feature_matrix(cfg: dict[str, Any]) -> pd.DataFrame:
         .merge(mode, on="station_key", how="left")
         .merge(distance, on="station_key", how="left")
         .merge(catchment, on="station_key", how="left")
+        .merge(landuse_feats, on="station_key", how="left")
         .merge(ward, on="station_key", how="left")
         .merge(ridership, on="station_key", how="left")
     )

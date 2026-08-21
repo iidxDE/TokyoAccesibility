@@ -6,7 +6,8 @@ stages:
     cmd: >
       python -m tokyo_ridership.data.load_gtfs &&
       python -m tokyo_ridership.data.load_ridership &&
-      python -m tokyo_ridership.data.load_census
+      python -m tokyo_ridership.data.load_census &&
+      python -m tokyo_ridership.data.load_landuse
     deps:
       - src/tokyo_ridership/data
       - data/raw
