@@ -3,7 +3,7 @@
 #   make train PYTHON=.venv/bin/python            (POSIX)
 PYTHON ?= python
 
-.PHONY: help install data features train test lint format typecheck serve app clean
+.PHONY: help install data features train explain test lint format typecheck serve app clean
 
 help:
 	@echo "Targets: install data features train test lint format typecheck serve app clean"
@@ -24,6 +24,9 @@ features:
 
 train:
 	$(PYTHON) -m tokyo_ridership.models.train
+
+explain:
+	$(PYTHON) -m tokyo_ridership.models.explain
 
 # Quality gates (match CI).
 test:

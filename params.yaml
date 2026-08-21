@@ -11,23 +11,39 @@ spatial_cv:
   n_splits: 8
   shuffle: false
 
-# Model roster (Phase 4). Paper baselines + LightGBM extension.
+# Servable-model selection (restricted to the no_daily_stop_events variant).
+model_selection:
+  primary_metric: r2_mean       # OOF log-R2, higher better
+  tie_breaker: mae_log_mean     # lower better
+  servable_variant: no_daily_stop_events
+
+# Model roster (Phase 4). Fixed n_estimators; sweep the anti-overfitting knobs.
 models:
   dummy:
-    strategy: mean
+    estimator: dummy            # variant-invariant floor; no grid
+    grid: {}
   ridge:
-    alpha: 1.0
+    estimator: ridge
+    grid:
+      alpha: [0.1, 1.0, 10.0, 100.0]
   random_forest:
-    n_estimators: 300
-    min_samples_leaf: 3
+    estimator: random_forest
+    fixed: { n_estimators: 300 }
+    grid:
+      min_samples_leaf: [1, 3, 5]
+      max_features: [0.5, 1.0]
   gradient_boosting:
-    n_estimators: 300
-    max_depth: 4
-    learning_rate: 0.05
+    estimator: gradient_boosting
+    fixed: { n_estimators: 300 }
+    grid:
+      max_depth: [2, 3]
+      learning_rate: [0.05, 0.1]
   lightgbm:
-    n_estimators: 500
-    learning_rate: 0.05
-    num_leaves: 31
+    estimator: lightgbm
+    fixed: { n_estimators: 500, min_child_samples: 20 }
+    grid:
+      num_leaves: [15, 31, 63]
+      learning_rate: [0.03, 0.05]
 
 # Endogeneity experiment: which feature configurations to run through the harness.
 endogeneity_variants:

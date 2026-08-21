@@ -50,5 +50,5 @@ Thumbs.db
 /.dvc/cache
 /.dvc/tmp
 
-# Reports: keep figures dir, ignore generated metrics.
-/reports/metrics.json
+# Reports: keep figures dir, ignore generated metrics/summaries.
+/reports/*.json

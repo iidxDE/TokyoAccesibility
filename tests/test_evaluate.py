@@ -46,6 +46,14 @@ def test_spatial_folds_no_block_leakage_and_partition() -> None:
     assert sorted(combined.tolist()) == list(range(100))
 
 
+def test_build_pipeline_empty_categorical() -> None:
+    # the stop_events_only variant has no categorical cols; must not error
+    pipe = evaluate.build_pipeline(["x1"], [], LinearRegression())
+    frame = pd.DataFrame({"x1": [1.0, 2.0, 3.0, 4.0]})
+    pipe.fit(frame, pd.Series([1.0, 2.0, 3.0, 4.0]))
+    assert pipe.predict(frame).shape == (4,)
+
+
 def test_conformal_offsets_and_coverage() -> None:
     residuals = np.linspace(-1.0, 1.0, 101)
     lo, hi = evaluate.conformal_offsets(residuals, level=0.8)

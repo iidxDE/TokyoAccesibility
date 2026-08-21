@@ -96,13 +96,14 @@ def build_pipeline(
     numeric_pipe = Pipeline(
         [("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler())]
     )
-    pre = ColumnTransformer(
-        [
-            ("num", numeric_pipe, numeric),
-            ("cat", OneHotEncoder(handle_unknown="ignore"), categorical),
-        ],
-        remainder="drop",
-    )
+    transformers: list[tuple[str, Any, list[str]]] = [("num", numeric_pipe, numeric)]
+    # OneHotEncoder.fit errors on zero columns; omit the cat block when empty
+    # (the stop_events_only variant has no categorical features).
+    if categorical:
+        transformers.append(
+            ("cat", OneHotEncoder(handle_unknown="ignore"), categorical)
+        )
+    pre = ColumnTransformer(transformers, remainder="drop")
     return Pipeline([("pre", pre), ("model", model)])
 
 

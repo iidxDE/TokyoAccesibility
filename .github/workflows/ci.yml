@@ -16,8 +16,8 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install (package + dev tooling)
-        run: python -m pip install -e ".[dev]"
+      - name: Install (package + dev + models extras)
+        run: python -m pip install -e ".[dev,models]"
 
       - name: Lint (ruff)
         run: python -m ruff check .

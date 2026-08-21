@@ -59,12 +59,12 @@ functions, not inline cells.
 
 Goal: run experiments through the Phase 3 harness; produce the servable model.
 
-- [ ] Model roster: Dummy baseline, Ridge, RandomForest, LightGBM — `src/tokyo_ridership/models/train.py`
-- [ ] **Endogeneity experiment**: run full / no-`daily_stop_events` / stop-events-only through the harness — `src/tokyo_ridership/models/train.py`
-- [ ] Select servable model = best **no-`daily_stop_events`** model (usable for greenfield stations)
-- [ ] Serialize the full pipeline (scaler + encoder + model) with a model id — `models/pipeline.joblib`
-- [ ] SHAP + residual export for the map/writeup — `src/tokyo_ridership/models/explain.py`
-- [ ] Wire `make train` — `Makefile`
+- [x] Model roster: Dummy baseline, Ridge, RandomForest, GradientBoosting, LightGBM — `src/tokyo_ridership/models/train.py`
+- [x] **Endogeneity experiment**: run full / no-`daily_stop_events` / stop-events-only through the harness — `src/tokyo_ridership/models/train.py`
+- [x] Select servable model = best **no-`daily_stop_events`** model (usable for greenfield stations)
+- [x] Serialize the full pipeline (scaler + encoder + model) with a model id — `models/pipeline.joblib`
+- [x] SHAP + residual export for the map/writeup — `src/tokyo_ridership/models/explain.py`
+- [x] Wire `make train` — `Makefile`
 
 ## Phase 5 — FastAPI service
 
