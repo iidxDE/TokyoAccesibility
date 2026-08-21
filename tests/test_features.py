@@ -8,7 +8,11 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import box
 
-from tokyo_ridership.features.accessibility import km_to_yamanote, pop_catchment
+from tokyo_ridership.features.accessibility import (
+    catchment_sum,
+    km_to_yamanote,
+    pop_catchment,
+)
 from tokyo_ridership.features.landuse import landuse_features
 from tokyo_ridership.features.network_graph import (
     build_route_graph,
@@ -122,6 +126,22 @@ def test_pop_catchment_sums_only_intersecting_chome() -> None:
 _LANDUSE_STOP = pd.DataFrame(
     {"stop_id": ["s"], "station_key": ["S"], "stop_lat": [35.70], "stop_lon": [139.70]}
 )
+
+
+def test_catchment_sum_generic_value_col() -> None:
+    # the generic catchment (employment reuses it) sums an arbitrary value column
+    polys = gpd.GeoDataFrame(
+        {"employment": [500.0, 900.0]},
+        geometry=[
+            box(139.695, 35.695, 139.705, 35.705),  # within 800 m
+            box(139.80, 35.80, 139.81, 35.81),  # far
+        ],
+        crs="EPSG:4326",
+    )
+    out = catchment_sum(
+        _LANDUSE_STOP, polys, 800, "employment", "employment_800m"
+    ).set_index("station_key")
+    assert out.loc["S", "employment_800m"] == 500.0
 
 
 def test_landuse_features_two_class_split() -> None:

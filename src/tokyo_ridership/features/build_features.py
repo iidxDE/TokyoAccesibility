@@ -49,6 +49,7 @@ def build_feature_matrix(cfg: dict[str, Any]) -> pd.DataFrame:
     stop_times = pd.read_parquet(interim_path(cfg, interim["gtfs_stop_times"]))
     routes = pd.read_parquet(interim_path(cfg, interim["gtfs_routes"]))
     census = gpd.read_parquet(interim_path(cfg, interim["census_chome"]))
+    employment = gpd.read_parquet(interim_path(cfg, interim["employment"]))
     landuse_mesh = gpd.read_parquet(interim_path(cfg, interim["landuse_mesh"]))
     ridership = pd.read_parquet(interim_path(cfg, interim["ridership"]))
 
@@ -63,6 +64,9 @@ def build_feature_matrix(cfg: dict[str, Any]) -> pd.DataFrame:
     mode = network_graph.station_modes(stops, trips, stop_times, routes)
     distance = accessibility.km_to_yamanote(stops, trips, stop_times, yamanote)
     catchment = accessibility.pop_catchment(stops, census, radius)
+    employment_catchment = accessibility.catchment_sum(
+        stops, employment, radius, "employment", "employment_800m"
+    )
     landuse_feats = landuse.landuse_features(stops, landuse_mesh, radius)
     ward = accessibility.assign_ward(stops, wards_geojson)
 
@@ -71,6 +75,7 @@ def build_feature_matrix(cfg: dict[str, Any]) -> pd.DataFrame:
         .merge(mode, on="station_key", how="left")
         .merge(distance, on="station_key", how="left")
         .merge(catchment, on="station_key", how="left")
+        .merge(employment_catchment, on="station_key", how="left")
         .merge(landuse_feats, on="station_key", how="left")
         .merge(ward, on="station_key", how="left")
         .merge(ridership, on="station_key", how="left")

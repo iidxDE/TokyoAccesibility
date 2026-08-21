@@ -16,6 +16,7 @@ interim:
   gtfs_routes: gtfs_routes.parquet
   ridership: ridership.parquet
   census_chome: census_chome.parquet   # geoparquet: chome population + geometry
+  employment: employment.parquet        # geoparquet: chome employment + geometry (metric CRS)
   landuse_mesh: landuse_mesh.parquet    # collapsed land-use class + geometry (metric CRS)
 
 # Assembled feature matrix written by Phase 2 (under paths.data_processed).
@@ -38,6 +39,9 @@ sources:
   mlit_ridership_shp: S12-20_GML/S12-20_GML/S12-20_NumberOfPassengers.shp
   census_population: tokyo_chocho_population.txt
   census_boundaries: tokyo_chocho_boundaries.shp
+  # Economic Census 2021 small-area boundary: chome polygons carrying employment
+  # (JUGYOSHA) directly, so no cross-census code matching is needed.
+  economic_census_boundary: A002005532021DDSWC13-JGD2011/r3ca13.shp
   # MLIT L03-b land-use mesh 5339. The .shp shipped without its .dbf (no
   # attributes), so we read the self-contained geojson (geometry + class).
   landuse_mesh: L03-b-21_5339.geojson
@@ -67,16 +71,15 @@ features:
     - km_to_yamanote
   demographics:
     - pop_800m_catchment
+    - employment_800m         # Economic Census 2021 workplace employment (JUGYOSHA)
   landuse:                    # MLIT L03-b land-use composition within the catchment
     - landuse_built_frac
     - landuse_mix
   categorical:
     - ward_jp
     - station_mode   # transport mode: rail/subway/monorail/agt/tram (mode signal)
-  # Deferred. employment_800m awaits the Economic-Census <-> Population-Census
-  # area correspondence (the two use incompatible chome codes; name join ~93%).
+  # Still deferred (needs OpenStreetMap POI extract).
   planned:
-    - employment_800m
     - poi_density_800m
 
 servable_exclude:

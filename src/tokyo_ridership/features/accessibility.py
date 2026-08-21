@@ -4,8 +4,8 @@ Ports ``data/feature_build.py`` geographic/demographic logic:
 ``distance_to_yamanote``, the 800 m population catchment from
 ``population_features``, and the stop->ward spatial join from ``assign_wards``.
 
-Post-paper feature families (employment / daytime population, POI density,
-land-use mix) are added here in a follow-up once their source data is acquired.
+The post-paper employment catchment reuses :func:`catchment_sum`; land-use
+composition lives in ``features/landuse.py``. POI density is still deferred.
 """
 
 from __future__ import annotations
@@ -76,22 +76,29 @@ def km_to_yamanote(
     return stations[["station_key", "km_to_yamanote"]]
 
 
+def catchment_sum(
+    stops: pd.DataFrame,
+    polygons: gpd.GeoDataFrame,
+    radius_m: float,
+    value_col: str,
+    out_col: str,
+) -> pd.DataFrame:
+    """Sum ``value_col`` over polygons intersecting each station's radius buffer."""
+    stations = _station_geodataframe(station_points(stops)).to_crs(METRIC_CRS)
+    stations["geometry"] = stations.buffer(radius_m)
+
+    layer = polygons.to_crs(METRIC_CRS)[[value_col, "geometry"]]
+    joined = gpd.sjoin(stations, layer, how="left", predicate="intersects")
+    return joined.groupby("station_key")[value_col].sum().rename(out_col).reset_index()
+
+
 def pop_catchment(
     stops: pd.DataFrame, census_chome: gpd.GeoDataFrame, radius_m: float
 ) -> pd.DataFrame:
     """Total population of chome intersecting each station's ``radius_m`` buffer."""
-    stations = _station_geodataframe(station_points(stops)).to_crs(METRIC_CRS)
-    stations["geometry"] = stations.buffer(radius_m)
-
-    chome = census_chome.to_crs(METRIC_CRS)[["population", "geometry"]]
-    joined = gpd.sjoin(stations, chome, how="left", predicate="intersects")
-    catchment = (
-        joined.groupby("station_key")["population"]
-        .sum()
-        .rename("pop_800m_catchment")
-        .reset_index()
+    return catchment_sum(
+        stops, census_chome, radius_m, "population", "pop_800m_catchment"
     )
-    return catchment
 
 
 def assign_ward(
