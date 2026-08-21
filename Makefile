@@ -16,6 +16,8 @@ data:
 	$(PYTHON) -m tokyo_ridership.data.load_gtfs
 	$(PYTHON) -m tokyo_ridership.data.load_ridership
 	$(PYTHON) -m tokyo_ridership.data.load_census
+	$(PYTHON) -m tokyo_ridership.data.load_employment
+	$(PYTHON) -m tokyo_ridership.data.load_landuse
 
 features:
 	$(PYTHON) -m tokyo_ridership.features.build_features
