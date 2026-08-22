@@ -22,6 +22,22 @@ METRIC_CRS = "EPSG:6691"
 EARTH_RADIUS_KM = 6371.0
 
 
+def haversine_km(
+    lat0: float, lon0: float, lats: np.ndarray, lons: np.ndarray
+) -> np.ndarray:
+    """Great-circle distance (km) from one point to arrays of points.
+
+    Shared by :func:`km_to_yamanote` (conceptually) and the serving-layer
+    network-snap so both measure distance identically.
+    """
+    lat0r, lon0r = np.radians(lat0), np.radians(lon0)
+    latr, lonr = np.radians(lats), np.radians(lons)
+    dlat = latr - lat0r
+    dlon = lonr - lon0r
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat0r) * np.cos(latr) * np.sin(dlon / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
+
+
 def station_points(stops: pd.DataFrame) -> pd.DataFrame:
     """One representative (lat, lon) per ``station_key`` (first occurrence)."""
     return (
@@ -102,16 +118,26 @@ def pop_catchment(
 
 
 def assign_ward(
-    stops: pd.DataFrame, wards_geojson: str | Path, outside_label: str = "Outside-23"
+    stops: pd.DataFrame,
+    wards: str | Path | gpd.GeoDataFrame,
+    outside_label: str = "Outside-23",
 ) -> pd.DataFrame:
     """Spatially join stations to the 23 special-ward polygons.
 
-    Stations outside the 23 wards get ``outside_label`` (they remain in the
-    dataset with an explicit out-of-ward marker, matching the reference matrix).
+    ``wards`` is either a path to the ward geojson (read here, as before) or an
+    already-loaded GeoDataFrame — the serving layer loads it once at startup and
+    passes it in (spec §5.0). Stations outside the 23 wards get ``outside_label``
+    (they remain in the dataset with an explicit out-of-ward marker, matching the
+    reference matrix).
     """
-    wards = gpd.read_file(wards_geojson).to_crs("EPSG:4326")
+    if isinstance(wards, gpd.GeoDataFrame):
+        wards = wards.copy()  # never mutate the caller's cached layer
+    else:
+        wards = gpd.read_file(wards)
+    wards = wards.to_crs("EPSG:4326")
     wards["geometry"] = wards.geometry.apply(make_valid)
-    wards["ward_jp"] = wards["N03_004"]
+    if "ward_jp" not in wards.columns:
+        wards["ward_jp"] = wards["N03_004"]
 
     stations = _station_geodataframe(station_points(stops))
     joined = gpd.sjoin(

@@ -46,6 +46,7 @@ serving = [
     "uvicorn[standard]>=0.29",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
+    "httpx>=0.27",  # fastapi TestClient (serving tests)
 ]
 # Phase 6 — Streamlit frontend (HTTP client of the API only).
 app = [

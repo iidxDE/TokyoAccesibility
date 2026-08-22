@@ -70,12 +70,12 @@ Goal: run experiments through the Phase 3 harness; produce the servable model.
 
 Goal: thin, typed inference service around the coordinates → prediction use case.
 
-- [ ] Request/response Pydantic models (lat/lng + optional overrides; prediction, back-transformed interval, echoed features, assumptions, model id) — `src/tokyo_ridership/serving/schemas.py`
-- [ ] Load model once at startup, inject into routes — `src/tokyo_ridership/serving/dependencies.py`
-- [ ] Prediction wrapper (load pipeline, point + interval, `expm1` back-transform) — `src/tokyo_ridership/models/predict.py`
-- [ ] Orchestration: coords → `build_features` → predict → assemble response (network-snap + extrapolation flag) — `src/tokyo_ridership/serving/service.py`
-- [ ] Routes: `/predict`, `/health`; bounds-validation 422; CORS config — `src/tokyo_ridership/serving/api.py`
-- [ ] Verify live via `/docs` with real Tokyo coordinates
+- [x] Request/response Pydantic models (lat/lng + optional overrides; prediction, back-transformed interval, echoed features, assumptions, model id) — `src/tokyo_ridership/serving/schemas.py`
+- [x] Load model once at startup, inject into routes — `src/tokyo_ridership/serving/dependencies.py`
+- [x] Prediction wrapper (load pipeline, point + interval, `expm1` back-transform) — `src/tokyo_ridership/models/predict.py`
+- [x] Orchestration: coords → `build_features` → predict → assemble response (network-snap + extrapolation flag) — `src/tokyo_ridership/serving/service.py`
+- [x] Routes: `/predict`, `/health`; bounds-validation 422; CORS config — `src/tokyo_ridership/serving/api.py`
+- [x] Verify live via `/docs` with real Tokyo coordinates (verified end-to-end via `TestClient` against the real bundle + data layers)
 
 ## Phase 6 — Streamlit frontend (HTTP client only)
 
