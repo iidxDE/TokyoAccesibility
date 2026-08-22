@@ -200,8 +200,39 @@ def conformal_offsets(residuals: np.ndarray, level: float) -> tuple[float, float
     return lo, hi
 
 
-def _coverage(residuals: np.ndarray, lo: float, hi: float) -> float:
-    return float(np.mean((residuals >= lo) & (residuals <= hi)))
+def lobo_coverage(
+    residuals: np.ndarray, blocks: np.ndarray, level: float, min_block_n: int = 10
+) -> dict[str, float]:
+    """Leave-block-out conformal coverage (honest spatial-generalization).
+
+    For each block, derive offsets from the residuals of all OTHER blocks and
+    measure coverage on the held-out block. Pooled coverage is the headline;
+    per-block spread (over blocks with >= min_block_n) is the conditional
+    diagnostic. Replaces the in-sample coverage, which is tautological (offsets
+    are quantiles of the same residuals).
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    alpha = 1.0 - level
+    covered = np.zeros(len(residuals), dtype=bool)
+    per_block: list[float] = []
+
+    for block in np.unique(blocks):
+        mask = blocks == block
+        lo, hi = np.quantile(residuals[~mask], [alpha / 2, 1 - alpha / 2])
+        in_band = (residuals[mask] >= lo) & (residuals[mask] <= hi)
+        covered[mask] = in_band
+        if int(mask.sum()) >= min_block_n:
+            per_block.append(float(in_band.mean()))
+
+    spread = np.array(per_block) if per_block else np.array([float("nan")])
+    return {
+        "coverage_lobo": float(covered.mean()),
+        "per_block_min": float(spread.min()),
+        "per_block_median": float(np.median(spread)),
+        "per_block_max": float(spread.max()),
+        "n_blocks_ge_min": int(len(per_block)),
+        "n_blocks_under_080": int((spread < 0.80).sum()),
+    }
 
 
 def moran_lisa(
@@ -304,7 +335,9 @@ def run(
         "level": confidence_level,
         "lower_offset": lo,
         "upper_offset": hi,
-        "coverage": _coverage(residuals, lo, hi),
+        # honest spatial-generalization coverage (leave-block-out), not the
+        # in-sample tautology; the shipped offsets stay marginal (lo/hi above).
+        **lobo_coverage(residuals, blocks, confidence_level),
     }
     moran, lisa = moran_lisa(residuals, coords, k=knn_k, seed=seed)
 

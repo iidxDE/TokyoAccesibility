@@ -54,11 +54,29 @@ def test_build_pipeline_empty_categorical() -> None:
     assert pipe.predict(frame).shape == (4,)
 
 
-def test_conformal_offsets_and_coverage() -> None:
+def test_conformal_offsets() -> None:
     residuals = np.linspace(-1.0, 1.0, 101)
     lo, hi = evaluate.conformal_offsets(residuals, level=0.8)
     assert lo < 0 < hi
-    assert 0.75 <= evaluate._coverage(residuals, lo, hi) <= 0.85
+
+
+def test_lobo_coverage_pooled_and_spread() -> None:
+    rng = np.random.default_rng(0)
+    # 6 well-behaved blocks -> pooled coverage near the 0.9 nominal level
+    blocks = np.repeat([f"b{i}" for i in range(6)], 40)
+    residuals = rng.normal(size=blocks.size)
+    out = evaluate.lobo_coverage(residuals, blocks, level=0.9, min_block_n=10)
+    assert 0.80 <= out["coverage_lobo"] <= 1.0
+    assert out["n_blocks_ge_min"] == 6
+    assert out["per_block_min"] <= out["per_block_median"] <= out["per_block_max"]
+
+    # a block with a shifted residual distribution is under-covered by others'
+    # offsets -> shows up in the spread, not hidden by the pooled headline
+    shifted = residuals.copy()
+    shifted[blocks == "b0"] += 3.0
+    biased = evaluate.lobo_coverage(shifted, blocks, level=0.9, min_block_n=10)
+    assert biased["per_block_min"] < 0.5
+    assert biased["n_blocks_under_080"] >= 1
 
 
 def test_metrics_perfect_prediction() -> None:
