@@ -72,9 +72,7 @@ def build_chome(cfg: dict[str, Any]) -> gpd.GeoDataFrame:
     # Multipart chome (islands, river-split parcels) arrive as several rows
     # sharing one KEY_CODE and one population. Dissolve to a single geometry
     # carrying population once, so the Phase 2 catchment join can't double-count.
-    chome = chome.dissolve(
-        by="KEY_CODE", aggfunc={"population": "first"}
-    ).reset_index()
+    chome = chome.dissolve(by="KEY_CODE", aggfunc={"population": "first"}).reset_index()
     return chome
 
 
