@@ -66,7 +66,14 @@ def build_chome(cfg: dict[str, Any]) -> gpd.GeoDataFrame:
     """Join chome population onto boundary polygons."""
     pop = load_population(cfg)
     bounds = load_boundaries(cfg)
-    return bounds.merge(pop, on="KEY_CODE", how="left")
+    chome = bounds.merge(pop, on="KEY_CODE", how="left")
+    chome["population"] = chome["population"].fillna(0.0)
+
+    # Multipart chome (islands, river-split parcels) arrive as several rows
+    # sharing one KEY_CODE and one population. Dissolve to a single geometry
+    # carrying population once, so the Phase 2 catchment join can't double-count.
+    chome = chome.dissolve(by="KEY_CODE", aggfunc={"population": "first"}).reset_index()
+    return chome
 
 
 def main() -> None:
