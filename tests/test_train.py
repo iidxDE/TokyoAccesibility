@@ -98,5 +98,5 @@ def test_train_smoke_cvresult() -> None:
         block_size_km=5.0,
     )
     assert np.isfinite(result.scores["r2_mean"])
-    assert 0.0 <= result.interval["coverage"] <= 1.0
+    assert 0.0 <= result.interval["coverage_lobo"] <= 1.0
     assert "I" in result.moran
