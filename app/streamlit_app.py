@@ -111,20 +111,20 @@ with tab_equity:
 
         _legend()
 
-        if clusters_only and (df["lisa_p"] < 0.05).sum() == 0:
-            st.info("No stations reach LISA significance (p < 0.05) in this dataset.")
+        if clusters_only and not maps.significant_mask(df).any():
+            st.info(
+                f"No stations reach LISA significance "
+                f"(p < {maps.SIGNIFICANCE_P}) in this dataset."
+            )
         else:
             st.pydeck_chart(maps.build_residual_deck(df, clusters_only=clusters_only))
 
         with st.expander("Mean residual by ward"):
-            summary = maps.ward_residual_summary(df)
-            if summary.empty:
+            chart = maps.ward_residual_chart(df)
+            if chart is None:
                 st.caption("No ward labels available for the rollup.")
             else:
-                st.bar_chart(
-                    summary.set_index("ward_jp")["mean_residual"],
-                    horizontal=True,
-                )
+                st.altair_chart(chart, use_container_width=True)
 
 
 # --- Page 2: Live what-if siting (API client) — implemented separately -------

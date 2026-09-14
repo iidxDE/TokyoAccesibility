@@ -60,12 +60,23 @@ def test_residual_rgba_clips_beyond_range() -> None:
     assert inside_lo == outside_lo
 
 
+def test_residual_rgba_alpha_grows_with_magnitude() -> None:
+    # Alpha encodes miss magnitude: faint = as-predicted, solid = large miss.
+    near, mid, far = maps._residual_rgba([0.0, 1.0, 2.0])
+    assert near[3] < mid[3] < far[3]  # monotonic in |residual|
+    assert near[3] == maps.ALPHA_MIN
+    assert far[3] == maps.ALPHA_MAX
+    neg, pos = maps._residual_rgba([-1.5, 1.5])
+    assert neg[3] == pos[3]  # symmetric in sign
+
+
 def test_radius_scales_with_abs_residual() -> None:
-    r = maps._radius_from_abs_residual([0.0, -3.0, 1.5])
-    # |0| -> min, |3| is the largest magnitude -> max, middle in between.
+    r = maps._radius_from_abs_residual([0.0, 2.0, 3.0, 1.0])
+    # Fixed anchor at RESIDUAL_CLIP: 0 -> min, |res| >= 2 clips to max, else between.
     assert r[0] == pytest.approx(maps.RADIUS_MIN_M)
-    assert r[1] == pytest.approx(maps.RADIUS_MAX_M)
-    assert maps.RADIUS_MIN_M < r[2] < maps.RADIUS_MAX_M
+    assert r[1] == pytest.approx(maps.RADIUS_MAX_M)  # |2| == clip -> max
+    assert r[2] == pytest.approx(maps.RADIUS_MAX_M)  # |3| clips to max
+    assert maps.RADIUS_MIN_M < r[3] < maps.RADIUS_MAX_M  # |1| strictly between
 
 
 def test_radius_all_zero_returns_min() -> None:
@@ -85,6 +96,27 @@ def test_ward_summary_drops_missing_ward() -> None:
     df.loc[0, "ward_jp"] = None
     summary = maps.ward_residual_summary(df)
     assert summary["n_stations"].sum() == 3
+
+
+def test_ward_residual_chart_sorts_on_mean_residual() -> None:
+    pytest.importorskip("altair")
+    spec = maps.ward_residual_chart(_frame()).to_dict()
+    y_sort = spec["encoding"]["y"]["sort"]
+    assert y_sort["field"] == "mean_residual"
+    assert y_sort["order"] == "ascending"
+
+
+def test_ward_residual_chart_empty_returns_none() -> None:
+    pytest.importorskip("altair")
+    df = _frame()
+    df["ward_jp"] = None
+    assert maps.ward_residual_chart(df) is None
+
+
+def test_significant_mask_matches_threshold() -> None:
+    mask = maps.significant_mask(_frame())
+    # lisa_p = [0.01, 0.20, 0.04, 0.50] against SIGNIFICANCE_P = 0.05.
+    assert list(mask) == [True, False, True, False]
 
 
 def test_build_deck_all_stations() -> None:
