@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import os
 
-import requests
+import api_client
+import pandas as pd
 import streamlit as st
 
 from tokyo_ridership.config import load_config
@@ -38,16 +39,125 @@ def _load_residuals():
     return maps.load_residual_layer(_load_config())
 
 
+@st.cache_data(ttl=15, show_spinner=False)
+def _cached_health(base_url: str):
+    """Poll ``/health`` at most every 15 s (shared chip; only Page 2 depends on it)."""
+    return api_client.health(base_url)
+
+
 def _health_chip() -> None:
-    """Render an API-health chip. Page 1 never needs the API; Page 2 does."""
-    try:
-        resp = requests.get(f"{API_BASE_URL}/health", timeout=2)
-        if resp.ok:
-            st.caption(f"🟢 API online · {API_BASE_URL}")
-            return
-        st.caption(f"🟠 API responded {resp.status_code} · {API_BASE_URL}")
-    except requests.RequestException:
-        st.caption(f"🔴 API offline · {API_BASE_URL} (Equity Map still works)")
+    """Render the shared API-health chip. Page 1 works even when the API is down."""
+    info = _cached_health(API_BASE_URL)
+    if info:
+        model_id = info.get("model_id", "?")
+        st.caption(f"🟢 Connected · model `{model_id}` · {API_BASE_URL}")
+    else:
+        st.caption(f"🔴 API unreachable · {API_BASE_URL} (Equity Map still works)")
+
+
+# --- Page 2 helpers (What-if siting) -----------------------------------------
+
+
+def _run_whatif() -> None:
+    """Read coords + override state from session, POST /predict, store the outcome."""
+    lat = st.session_state["whatif_lat"]
+    lon = st.session_state["whatif_lon"]
+    keys = api_client.PRIMARY_KEYS + api_client.ADVANCED_KEYS
+    values = {k: st.session_state.get(f"ovr_val_{k}") for k in keys}
+    enabled = {k: bool(st.session_state.get(f"ovr_on_{k}")) for k in keys}
+    overrides = api_client.collect_overrides(values, enabled)
+    with st.spinner("Scoring…"):
+        st.session_state["whatif_result"] = api_client.predict(
+            API_BASE_URL, lat, lon, overrides
+        )
+
+
+def _render_whatif_result(data: dict) -> None:
+    """Render prediction, asymmetric interval, assumptions, extrapolation, features."""
+    interval = data["interval"]
+    assumptions = data["assumptions"]
+
+    st.metric("Predicted ridership", f"{round(data['prediction']):,} /day")
+    level = round(interval["level"] * 100)
+    st.caption(
+        f"{level}% interval (asymmetric): "
+        f"{round(interval['lower']):,} … {round(interval['upper']):,} passengers/day"
+    )
+    st.caption(f"model `{data.get('model', '?')}`")
+
+    st.markdown("**Assumptions** — the defaults you may want to challenge")
+    overridden = assumptions.get("overridden_features") or []
+    st.markdown(
+        f"- Connectivity & mode taken from **{assumptions['snapped_station']}**, "
+        f"{round(assumptions['snap_distance_m'])} m away\n"
+        f"- Station mode: **{assumptions['station_mode']}** "
+        f"({assumptions['station_mode_source']})\n"
+        f"- Overridden features: {', '.join(overridden) if overridden else 'none'}"
+    )
+    if assumptions.get("ward_outside_23"):
+        st.warning("This point is outside the 23 special wards (ward = Outside-23).")
+
+    extrapolation = assumptions.get("extrapolation") or {}
+    if extrapolation.get("flag"):
+        names = ", ".join(extrapolation.get("features", [])) or "some features"
+        st.warning(
+            f"Extrapolating beyond the training range for: {names}. "
+            "The prediction is less reliable here."
+        )
+        detail = extrapolation.get("detail") or []
+        if detail:
+            st.dataframe(pd.DataFrame(detail), hide_index=True)
+
+    with st.expander("Feature vector (audit trail)"):
+        rows = [
+            {
+                "feature": f.label,
+                "value": "—"
+                if data["features"].get(f.key) is None
+                else data["features"][f.key],
+            }
+            for f in api_client.FEATURES
+        ]
+        st.dataframe(pd.DataFrame(rows), hide_index=True)
+
+
+def _override_control(feat: api_client.Feature, default) -> None:
+    """One override widget: a toggle that reveals an input seeded from the default."""
+    if not st.checkbox(feat.label, key=f"ovr_on_{feat.key}"):
+        st.caption(f"using default: {'—' if default is None else default}")
+        return
+    vkey = f"ovr_val_{feat.key}"
+    if feat.key == "station_mode":
+        seed = default if default in api_client.MODES else api_client.MODES[0]
+        st.session_state.setdefault(vkey, seed)
+        st.selectbox("mode", api_client.MODES, key=vkey, label_visibility="collapsed")
+    elif feat.dtype == "int":
+        seed = int(default) if isinstance(default, (int, float)) else 0
+        st.session_state.setdefault(vkey, seed)
+        st.number_input("value", step=1, key=vkey, label_visibility="collapsed")
+    else:
+        seed = float(default) if isinstance(default, (int, float)) else 0.0
+        st.session_state.setdefault(vkey, seed)
+        st.number_input("value", key=vkey, label_visibility="collapsed")
+
+
+def _render_override_panel(features: dict) -> None:
+    """Primary + advanced override controls, paired with the assumptions block."""
+    st.markdown("**Override assumptions and re-predict**")
+    for key in api_client.PRIMARY_KEYS:
+        _override_control(api_client.FEATURES_BY_KEY[key], features.get(key))
+    with st.expander("Advanced — network position"):
+        for key in api_client.ADVANCED_KEYS:
+            _override_control(api_client.FEATURES_BY_KEY[key], features.get(key))
+    col_go, col_reset = st.columns(2)
+    if col_go.button("Re-predict", type="primary", key="whatif_repredict"):
+        _run_whatif()
+        st.rerun()
+    if col_reset.button("Reset overrides", key="whatif_reset"):
+        for f in api_client.FEATURES:
+            st.session_state.pop(f"ovr_on_{f.key}", None)
+            st.session_state.pop(f"ovr_val_{f.key}", None)
+        st.rerun()
 
 
 # --- Page shell --------------------------------------------------------------
@@ -127,8 +237,93 @@ with tab_equity:
                 st.altair_chart(chart, use_container_width=True)
 
 
-# --- Page 2: Live what-if siting (API client) — implemented separately -------
+# --- Page 2: Live what-if siting (API client) --------------------------------
 
 with tab_whatif:
     st.subheader("What-if: predict ridership for a new station")
-    st.info("Coming in the next Phase 6 step — this tab calls the FastAPI service.")
+    st.write(
+        "Drop a candidate coordinate to get predicted daily ridership with an "
+        "uncertainty interval, read the assumptions the service made, then override "
+        "the questionable ones and re-predict."
+    )
+
+    bounds = _load_config()["serving_bounds"]
+
+    # Apply a pending map-click selection *before* the coordinate widgets exist
+    # (Streamlit forbids mutating a widget's state after it is instantiated).
+    pending = st.session_state.pop("whatif_pending_coords", None)
+    if pending is not None:
+        st.session_state["whatif_lat"], st.session_state["whatif_lon"] = pending
+    st.session_state.setdefault("whatif_lat", 35.6896)
+    st.session_state.setdefault("whatif_lon", 139.7006)
+
+    col_lat, col_lon = st.columns(2)
+    lat = col_lat.number_input(
+        "Latitude",
+        key="whatif_lat",
+        format="%.4f",
+        help=f"Tokyo bounds: {bounds['min_lat']}–{bounds['max_lat']}",
+    )
+    lon = col_lon.number_input(
+        "Longitude",
+        key="whatif_lon",
+        format="%.4f",
+        help=f"Tokyo bounds: {bounds['min_lon']}–{bounds['max_lon']}",
+    )
+
+    in_bounds = (
+        bounds["min_lat"] <= lat <= bounds["max_lat"]
+        and bounds["min_lon"] <= lon <= bounds["max_lon"]
+    )
+    if not in_bounds:
+        st.warning(
+            f"Coordinate is outside Tokyo serving bounds "
+            f"(lat {bounds['min_lat']}–{bounds['max_lat']}, "
+            f"lon {bounds['min_lon']}–{bounds['max_lon']}). Adjust before predicting."
+        )
+
+    # Map preview + optional residual overlay for context and click-to-prefill.
+    try:
+        overlay_df = _load_residuals()
+    except FileNotFoundError:
+        overlay_df = None
+    if overlay_df is not None:
+        st.caption("Tip: click an existing station to prefill its coordinates.")
+    event = st.pydeck_chart(
+        maps.build_candidate_deck(lat, lon, overlay_df),
+        on_select="rerun",
+        selection_mode="single-object",
+        key="whatif_map",
+    )
+    selection = getattr(event, "selection", None)
+    picked = (selection or {}).get("objects", {}).get("stations") if selection else None
+    if picked:
+        row = picked[0]
+        plat, plon = row.get("stop_lat"), row.get("stop_lon")
+        if (
+            plat is not None
+            and plon is not None
+            and (round(plat, 6) != round(lat, 6) or round(plon, 6) != round(lon, 6))
+        ):
+            st.session_state["whatif_pending_coords"] = (float(plat), float(plon))
+            st.rerun()
+
+    if st.button(
+        "Predict", type="primary", disabled=not in_bounds, key="whatif_predict"
+    ):
+        _run_whatif()
+
+    # Result block (priority order), covering all seven states.
+    outcome = st.session_state.get("whatif_result")
+    if outcome is None:
+        st.info("Enter a coordinate above and press **Predict** to score a site.")
+    elif outcome.status == "ok" and outcome.data is not None:
+        _render_whatif_result(outcome.data)
+        _render_override_panel(outcome.data["features"])
+    elif outcome.status == "validation_error":
+        st.error(f"The service rejected the request — {outcome.message}")
+    else:  # "unreachable" or "error"
+        st.error(
+            f"Could not get a prediction from the service at {API_BASE_URL}. "
+            "The Equity Map tab still works while the API is down."
+        )

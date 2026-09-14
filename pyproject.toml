@@ -49,11 +49,13 @@ serving = [
     "httpx>=0.27",  # fastapi TestClient (serving tests)
 ]
 # Phase 6 — Streamlit frontend (HTTP client of the API only).
-# streamlit>=1.36 is the floor validated for the APIs the app uses (st.tabs,
-# st.pydeck_chart HTML tooltip, st.altair_chart). altair ships with Streamlit
-# but is pinned explicitly because viz/maps.py builds the ward chart with it.
+# streamlit>=1.39 is the floor validated for the APIs the app uses: st.tabs,
+# st.altair_chart, and — the binding constraint — st.pydeck_chart's on_select
+# selections for Page 2's click-to-prefill, which only exist from 1.39 (1.38
+# raises TypeError on on_select). altair ships with Streamlit but is pinned
+# explicitly because viz/maps.py builds the ward chart with it.
 app = [
-    "streamlit>=1.36",
+    "streamlit>=1.39",
     "altair>=5",
     "requests>=2.31",
     "pydeck>=0.9",
@@ -98,5 +100,5 @@ no_implicit_optional = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "app"]  # "app" so tests can import the thin api_client
 addopts = "-q"
