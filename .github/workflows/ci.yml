@@ -30,3 +30,45 @@ jobs:
 
       - name: Test (pytest)
         run: python -m pytest
+
+  # Prove the declared `app`-extra floor (pyproject: streamlit>=1.36, altair>=5,
+  # pydeck>=0.9) actually imports and renders, so a fresh Community Cloud deploy
+  # can't resolve below a version the app needs. uv's lowest-direct pins every
+  # direct dependency to its floor (transitive deps stay current).
+  app-floor:
+    name: App at declared minimums
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install app extra at lowest direct versions
+        run: uv pip install --system --resolution lowest-direct -e ".[app]"
+
+      - name: Install test runner (unpinned)
+        run: uv pip install --system pytest
+
+      - name: Show resolved floor versions
+        run: |
+          python -c "import streamlit, altair, pydeck; \
+            print('streamlit', streamlit.__version__); \
+            print('altair', altair.__version__); \
+            print('pydeck', pydeck.__version__)"
+
+      - name: Viz tests at floor
+        run: python -m pytest tests/test_viz_maps.py -q
+
+      - name: Headless boot smoke (renders the shell without error)
+        run: |
+          python -m streamlit run app/streamlit_app.py \
+            --server.headless true --server.port 8501 > st.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8501/_stcore/health >/dev/null && break
+            sleep 1
+          done
+          cat st.log
+          curl -sf http://localhost:8501/_stcore/health >/dev/null
+          ! grep -qi traceback st.log
