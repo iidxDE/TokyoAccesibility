@@ -257,3 +257,70 @@ def ward_residual_chart(df: pd.DataFrame) -> altair.Chart | None:
             tooltip=["ward_jp", "mean_residual", "n_stations"],
         )
     )
+
+
+# Bright marker for the What-if candidate point (distinct from the residual ramp).
+_CANDIDATE_RGBA = [255, 214, 10, 235]
+
+
+def build_candidate_deck(
+    lat: float,
+    lon: float,
+    residual_df: pd.DataFrame | None = None,
+    *,
+    view_zoom: float = 12.0,
+) -> pydeck.Deck:
+    """Map preview for Page 2: a candidate marker over an optional residual layer.
+
+    When ``residual_df`` (the Page-1 ``load_residual_layer`` frame) is provided, the
+    existing stations are drawn underneath as a pickable ``id="stations"`` layer so
+    the app can prefill the coordinate inputs from an ``on_select`` pick; the
+    candidate marker sits on top. The view centres on the candidate. ``pydeck`` is
+    imported lazily so the module stays importable without the ``app`` extra.
+    """
+    import pydeck
+
+    layers = []
+    if residual_df is not None and not residual_df.empty:
+        stations = _with_tooltip_strings(residual_df)
+        layers.append(
+            pydeck.Layer(
+                "ScatterplotLayer",
+                id="stations",
+                data=stations,
+                get_position=["stop_lon", "stop_lat"],
+                get_fill_color="fill_color",
+                get_radius="radius_m",
+                radius_min_pixels=2,
+                radius_max_pixels=20,
+                pickable=True,
+                opacity=1.0,
+                stroked=False,
+            )
+        )
+
+    candidate = pd.DataFrame({"lon": [lon], "lat": [lat]})
+    layers.append(
+        pydeck.Layer(
+            "ScatterplotLayer",
+            id="candidate",
+            data=candidate,
+            get_position=["lon", "lat"],
+            get_fill_color=_CANDIDATE_RGBA,
+            get_radius=180,
+            radius_min_pixels=7,
+            radius_max_pixels=16,
+            pickable=False,
+            stroked=True,
+            get_line_color=[20, 20, 20, 255],
+            line_width_min_pixels=2,
+        )
+    )
+
+    view_state = pydeck.ViewState(latitude=lat, longitude=lon, zoom=view_zoom)
+    return pydeck.Deck(
+        layers=layers,
+        initial_view_state=view_state,
+        map_style=None,
+        tooltip=_TOOLTIP,
+    )
