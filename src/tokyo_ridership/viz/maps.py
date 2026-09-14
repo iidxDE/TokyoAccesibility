@@ -12,15 +12,17 @@ no API calls and never imports from ``models``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
-import pydeck
 from matplotlib import colormaps
 
 from tokyo_ridership.config import processed_path
+
+if TYPE_CHECKING:
+    import pydeck
 
 # Diverging colour is the signed *log* residual, clipped to this symmetric range.
 # Red (RdBu_r high end) = busier than predicted; blue = quieter than predicted.
@@ -157,7 +159,12 @@ def build_residual_deck(df: pd.DataFrame, *, clusters_only: bool) -> pydeck.Deck
     ``clusters_only`` filters to significant LISA clusters (``lisa_p < 0.05``)
     and recolours by quadrant (HH/LL emphasised, LH/HL greyed as outliers).
     The default (``False``) shows all stations coloured by signed residual.
+
+    ``pydeck`` (the ``app`` extra) is imported lazily so the pure helpers and
+    ``load_residual_layer`` stay usable without the frontend dependency.
     """
+    import pydeck
+
     data = df
     if clusters_only:
         data = df[df["lisa_p"] < _SIGNIFICANCE].copy()
