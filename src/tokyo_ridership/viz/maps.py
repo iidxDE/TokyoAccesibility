@@ -22,6 +22,7 @@ from matplotlib import colormaps
 from tokyo_ridership.config import processed_path
 
 if TYPE_CHECKING:
+    import altair
     import pydeck
 
 # Diverging colour is the signed *log* residual, clipped to this symmetric range.
@@ -32,6 +33,10 @@ RESIDUAL_CLIP = 2.0
 # smallest misses visible and stop the largest from swamping the map.
 RADIUS_MIN_M = 120.0
 RADIUS_MAX_M = 900.0
+
+# Per-point alpha grows with |residual|: faint = model is right, solid = miss.
+ALPHA_MIN = 45
+ALPHA_MAX = 230
 
 # LISA quadrant integer -> readable label (1=HH 2=LH 3=LL 4=HL).
 _QUADRANT_LABELS = {1: "HH", 2: "LH", 3: "LL", 4: "HL"}
@@ -45,7 +50,14 @@ _QUADRANT_RGBA = {
     "HL": [160, 160, 160, 140],  # outlier (grey)
 }
 
-_SIGNIFICANCE = 0.05
+# LISA pseudo p-value below which a station counts as a significant cluster.
+# Single source of truth for the deck filter and the app's empty-state check.
+SIGNIFICANCE_P = 0.05
+
+
+def significant_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of LISA-significant stations (``lisa_p < SIGNIFICANCE_P``)."""
+    return df["lisa_p"] < SIGNIFICANCE_P
 
 
 def _quadrant_label(q: Any) -> str:
@@ -59,21 +71,29 @@ def _quadrant_label(q: Any) -> str:
 def _residual_rgba(residuals: pd.Series | np.ndarray) -> list[list[int]]:
     """RdBu_r colour for each signed log residual, clipped to ``+-RESIDUAL_CLIP``.
 
+    The alpha channel grows with ``|residual|`` (``ALPHA_MIN``..``ALPHA_MAX``) so
+    near-zero "as predicted" stations recede and the misses read loudest.
     Returns ``[r, g, b, a]`` int lists suitable for pydeck ``get_fill_color``.
     """
+    values = np.asarray(residuals, dtype=float)
     norm = mpl.colors.Normalize(vmin=-RESIDUAL_CLIP, vmax=RESIDUAL_CLIP, clip=True)
     cmap = colormaps["RdBu_r"]
-    rgba = cmap(norm(np.asarray(residuals, dtype=float)))  # (n, 4) floats in [0, 1]
-    return (rgba * 255).round().astype(int).tolist()
+    rgba = (cmap(norm(values)) * 255).round().astype(int)  # (n, 4) ints in [0, 255]
+
+    mag = np.clip(np.abs(values) / RESIDUAL_CLIP, 0.0, 1.0)
+    rgba[:, 3] = (ALPHA_MIN + mag * (ALPHA_MAX - ALPHA_MIN)).round().astype(int)
+    return rgba.tolist()
 
 
 def _radius_from_abs_residual(residuals: pd.Series | np.ndarray) -> np.ndarray:
-    """Scale ``|residual|`` linearly into ``[RADIUS_MIN_M, RADIUS_MAX_M]`` metres."""
+    """Scale ``|residual|`` into ``[RADIUS_MIN_M, RADIUS_MAX_M]`` metres.
+
+    Normalised by the fixed ``RESIDUAL_CLIP`` (not the data max) so size shares
+    one anchor with colour and stays comparable across the all/clusters views; a
+    ``sqrt`` lifts the mid-range so moderate misses stay visible.
+    """
     mag = np.abs(np.asarray(residuals, dtype=float))
-    top = float(np.nanmax(mag)) if mag.size else 0.0
-    if top <= 0:
-        return np.full(mag.shape, RADIUS_MIN_M)
-    frac = np.clip(mag / top, 0.0, 1.0)
+    frac = np.sqrt(np.clip(mag / RESIDUAL_CLIP, 0.0, 1.0))
     return RADIUS_MIN_M + frac * (RADIUS_MAX_M - RADIUS_MIN_M)
 
 
@@ -167,7 +187,7 @@ def build_residual_deck(df: pd.DataFrame, *, clusters_only: bool) -> pydeck.Deck
 
     data = df
     if clusters_only:
-        data = df[df["lisa_p"] < _SIGNIFICANCE].copy()
+        data = df[significant_mask(df)].copy()
         data["fill_color"] = data["quadrant_label"].map(_QUADRANT_RGBA)
 
     data = _with_tooltip_strings(data)
@@ -179,10 +199,10 @@ def build_residual_deck(df: pd.DataFrame, *, clusters_only: bool) -> pydeck.Deck
         get_position=["stop_lon", "stop_lat"],
         get_fill_color="fill_color",
         get_radius="radius_m",
-        radius_min_pixels=3,
+        radius_min_pixels=2,
         radius_max_pixels=28,
         pickable=True,
-        opacity=0.85,
+        opacity=1.0,  # per-point alpha (in fill_color) carries the fade
         stroked=False,
     )
     view_state = pydeck.ViewState(latitude=35.69, longitude=139.75, zoom=10.5)
@@ -209,3 +229,31 @@ def ward_residual_summary(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index(drop=True)
     )
     return summary
+
+
+def ward_residual_chart(df: pd.DataFrame) -> altair.Chart | None:
+    """Horizontal bar of mean residual per ward, ranked by value.
+
+    ``st.bar_chart`` sorts a nominal axis by codepoint and discards frame order,
+    so the ranking is drawn explicitly with Altair (``sort`` pinned to the
+    value). Returns ``None`` when no ward labels are available. ``altair`` (ships
+    with Streamlit, in the ``app`` extra) is imported lazily like ``pydeck``.
+    """
+    import altair as alt
+
+    summary = ward_residual_summary(df)
+    if summary.empty:
+        return None
+    return (
+        alt.Chart(summary)
+        .mark_bar()
+        .encode(
+            x=alt.X("mean_residual:Q", title="mean residual (log)"),
+            y=alt.Y(
+                "ward_jp:N",
+                title=None,
+                sort=alt.EncodingSortField("mean_residual", order="ascending"),
+            ),
+            tooltip=["ward_jp", "mean_residual", "n_stations"],
+        )
+    )

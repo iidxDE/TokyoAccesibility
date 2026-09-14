@@ -49,8 +49,12 @@ serving = [
     "httpx>=0.27",  # fastapi TestClient (serving tests)
 ]
 # Phase 6 — Streamlit frontend (HTTP client of the API only).
+# streamlit>=1.36 is the floor validated for the APIs the app uses (st.tabs,
+# st.pydeck_chart HTML tooltip, st.altair_chart). altair ships with Streamlit
+# but is pinned explicitly because viz/maps.py builds the ward chart with it.
 app = [
-    "streamlit>=1.33",
+    "streamlit>=1.36",
+    "altair>=5",
     "requests>=2.31",
     "pydeck>=0.9",
 ]
