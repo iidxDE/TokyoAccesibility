@@ -156,6 +156,13 @@ def load_clean_gtfs(cfg: dict[str, Any]) -> dict[str, pd.DataFrame]:
         stop_times_out["stop_sequence"] = pd.to_numeric(
             stop_times_out["stop_sequence"]
         ).astype("int32")
+    # trip_id/stop_id are massively repeated across ~700k rows (only ~60k trips
+    # and ~900 stops), so store them as categoricals: the interim parquet and the
+    # served in-memory table shrink ~6x with no change to the feature path, which
+    # only ``.map()``/``.isin()`` these keys (both category-transparent).
+    for key in ("trip_id", "stop_id"):
+        if key in stop_times_out.columns:
+            stop_times_out[key] = stop_times_out[key].astype("category")
 
     return {
         "stops": stops[stop_cols].reset_index(drop=True),
