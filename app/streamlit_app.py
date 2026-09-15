@@ -58,6 +58,25 @@ def _health_chip() -> None:
 # --- Page 2 helpers (What-if siting) -----------------------------------------
 
 
+def _fmt_value(v) -> str:
+    """Human-friendly display for a feature value.
+
+    Always returns a string, which also keeps the audit table's ``value`` column
+    single-typed — mixing floats/ints/strings makes Streamlit's Arrow conversion
+    log an ``ArrowInvalid`` on every predict. ``bool`` is checked before ``int``
+    (it is a subclass) although the servable features carry none.
+    """
+    if v is None:
+        return "—"
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, float):
+        return f"{v:,.3f}".rstrip("0").rstrip(".")
+    if isinstance(v, int):
+        return f"{v:,}"
+    return str(v)
+
+
 def _run_whatif() -> None:
     """Read coords + override state from session, POST /predict, store the outcome."""
     lat = st.session_state["whatif_lat"]
@@ -110,12 +129,7 @@ def _render_whatif_result(data: dict) -> None:
 
     with st.expander("Feature vector (audit trail)"):
         rows = [
-            {
-                "feature": f.label,
-                "value": "—"
-                if data["features"].get(f.key) is None
-                else data["features"][f.key],
-            }
+            {"feature": f.label, "value": _fmt_value(data["features"].get(f.key))}
             for f in api_client.FEATURES
         ]
         st.dataframe(pd.DataFrame(rows), hide_index=True)
@@ -124,7 +138,7 @@ def _render_whatif_result(data: dict) -> None:
 def _override_control(feat: api_client.Feature, default) -> None:
     """One override widget: a toggle that reveals an input seeded from the default."""
     if not st.checkbox(feat.label, key=f"ovr_on_{feat.key}"):
-        st.caption(f"using default: {'—' if default is None else default}")
+        st.caption(f"using default: {_fmt_value(default)}")
         return
     vkey = f"ovr_val_{feat.key}"
     if feat.key == "station_mode":
