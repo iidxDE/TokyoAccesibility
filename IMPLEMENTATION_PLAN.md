@@ -81,10 +81,10 @@ Goal: thin, typed inference service around the coordinates → prediction use ca
 
 Goal: static equity map + live what-if, consuming the API over HTTP.
 
-- [ ] Static residual/equity map of 474 stations (precomputed, no API call) — `app/streamlit_app.py`, `src/tokyo_ridership/viz/maps.py`
-- [ ] Pin-drop → `requests.post` to API → render prediction + interval + assumptions — `app/streamlit_app.py`
-- [ ] Override controls (e.g. hypothetical nearby jobs) → re-call API — `app/streamlit_app.py`
-- [ ] Loading spinner + graceful API-error handling; `API_BASE_URL` from env — `app/streamlit_app.py`
+- [x] Static residual/equity map of 474 stations (precomputed, no API call) — `app/streamlit_app.py`, `src/tokyo_ridership/viz/maps.py`
+- [x] Pin-drop → `requests.post` to API → render prediction + interval + assumptions — `app/streamlit_app.py`
+- [x] Override controls (e.g. hypothetical nearby jobs) → re-call API — `app/streamlit_app.py`
+- [x] Loading spinner + graceful API-error handling; `API_BASE_URL` from env — `app/streamlit_app.py`
 
 ## Phase 7 — Deployment + CI/CD
 
